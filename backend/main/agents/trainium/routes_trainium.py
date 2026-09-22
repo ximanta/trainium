@@ -1,10 +1,7 @@
-import uuid
-
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 
 from main.agents.trainium.auth import User, get_current_admin, get_current_user
-from main.agents.trainium.db_manager import sessions_collection
-from main.agents.trainium.models import Session
+from main.agents.trainium.db_manager import persona_templates_collection, scenarios_collection
 
 
 def configure_routes_trainium(app: FastAPI) -> None:
@@ -12,11 +9,15 @@ def configure_routes_trainium(app: FastAPI) -> None:
     async def health():
         return {"status": "ok", "agent": "trainium"}
 
-    @app.post("/trainium/sessions")
-    async def create_session(user: User = Depends(get_current_user)):
-        session = Session(id=str(uuid.uuid4()), org_id=user.org_id, trainer_id=user.id)
-        await sessions_collection.insert_one(session.model_dump())
-        return session
+    @app.get("/trainium/personas")
+    async def list_personas(user: User = Depends(get_current_user)):
+        cursor = persona_templates_collection.find({}, {"_id": 0})
+        return await cursor.to_list(length=None)
+
+    @app.get("/trainium/scenarios")
+    async def list_scenarios(user: User = Depends(get_current_user)):
+        cursor = scenarios_collection.find({}, {"_id": 0})
+        return await cursor.to_list(length=None)
 
     @app.get("/trainium/admin/whoami")
     async def admin_whoami(user: User = Depends(get_current_admin)):

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from main.agents.trainium.db_manager import ensure_indexes, seed_reference_data
 from main.agents.trainium.routes_trainium import configure_routes_trainium
 from main.config import settings
 
@@ -15,6 +16,12 @@ app.add_middleware(
 )
 
 configure_routes_trainium(app)
+
+
+@app.on_event("startup")
+async def on_startup():
+    await ensure_indexes()
+    await seed_reference_data()
 
 
 @app.get("/health")
