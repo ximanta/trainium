@@ -105,6 +105,37 @@ class Rubric(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class TranscriptSegment(BaseModel):
+    id: str
+    speaker: str  # "trainer" or a persona_id
+    ts_start: float
+    ts_end: float
+    text: str
+    confidence: Optional[float] = None
+    objective_id: Optional[str] = None
+    slide: Optional[int] = None
+
+
+class Transcript(BaseModel):
+    simulation_id: str
+    version: int = 1
+    stt_provider: str = "gemini-3.5-transcribe-live"
+    segments: list[TranscriptSegment] = Field(default_factory=list)
+    word_count: int = 0
+
+
+EventActor = Literal["trainer", "persona", "director", "system"]
+
+
+class Event(BaseModel):
+    simulation_id: str
+    ts_s: float
+    kind: str
+    actor: EventActor
+    persona_id: Optional[str] = None
+    payload: dict = Field(default_factory=dict)
+
+
 class Simulation(BaseModel):
     id: str
     org_id: str

@@ -20,6 +20,7 @@ from google.genai import types
 
 from main.agents.trainium.db_manager import persona_templates_collection, simulations_collection
 from main.agents.trainium.director.layer_b import DirectorDecision
+from main.agents.trainium.director.persistence import append_event, append_transcript_segment
 from main.agents.trainium.director.policy import DirectorPolicy
 from main.agents.trainium.director.reducer import apply_trainer_utterance
 from main.agents.trainium.director.speculative import SpeculativeDirector
@@ -47,7 +48,12 @@ async def _load_session_personas(persona_ids: list[str]) -> dict[str, PersonaSta
 
 
 async def _stream_persona_tts(
-    client: genai.Client, decision: DirectorDecision, voice_id: str, websocket: WebSocket
+    client: genai.Client,
+    decision: DirectorDecision,
+    voice_id: str,
+    websocket: WebSocket,
+    simulation_id: str,
+    ts_start: float,
 ) -> None:
     utterance_id = str(uuid.uuid4())
     await _ws_send_json(
@@ -61,6 +67,14 @@ async def _stream_persona_tts(
                 "intent": decision.intent,
             },
         },
+    )
+    await append_event(
+        simulation_id,
+        ts_start,
+        kind="persona_speaking",
+        actor="persona",
+        persona_id=decision.persona_id,
+        payload={"text": decision.text, "intent": decision.intent, "urgency": decision.urgency},
     )
 
     seq = 0
@@ -97,6 +111,13 @@ async def _stream_persona_tts(
                 seq += 1
 
     await _ws_send_json(websocket, {"type": "persona_done", "data": {"utterance_id": utterance_id}})
+    await append_transcript_segment(
+        simulation_id,
+        speaker=decision.persona_id,
+        ts_start=ts_start,
+        ts_end=ts_start,  # persona utterance duration is not tracked client-side; refine when recording lands (M4)
+        text=decision.text,
+    )
 
 
 def configure_routes_ws_session(app: FastAPI) -> None:
@@ -140,8 +161,9 @@ def configure_routes_ws_session(app: FastAPI) -> None:
         transcript_buffer: list[str] = []
         tts_task: asyncio.Task | None = None
         turn_generation = 0
+        turn_start_elapsed = 0.0
 
-        async def run_director_turn(generation: int) -> None:
+        async def run_director_turn(generation: int, ts_start: float) -> None:
             nonlocal tts_task
             last_len = 0
             for _ in range(30):
@@ -166,6 +188,22 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                     "data": {"text": full_transcript, "ts": state.elapsed_s},
                 },
             )
+            await append_transcript_segment(
+                simulation_id,
+                speaker="trainer",
+                ts_start=ts_start,
+                ts_end=state.elapsed_s,
+                text=full_transcript,
+                slide=state.slide_number,
+            )
+            await append_event(
+                simulation_id,
+                state.elapsed_s,
+                kind="final_transcript",
+                actor="trainer",
+                persona_id=None,
+                payload={"text": full_transcript},
+            )
 
             apply_trainer_utterance(state, full_transcript, must_cover_terms=[])
 
@@ -187,7 +225,9 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             state.record_intervention(decision.persona_id)
             voice_id = state.persona_states[decision.persona_id].voice_id
             tts_task = asyncio.create_task(
-                _stream_persona_tts(client, decision, voice_id, websocket)
+                _stream_persona_tts(
+                    client, decision, voice_id, websocket, simulation_id, state.elapsed_s
+                )
             )
 
         try:
@@ -197,7 +237,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                 await _ws_send_json(websocket, {"type": "ready", "data": {}})
 
                 async def relay_client_to_live():
-                    nonlocal turn_generation, tts_task
+                    nonlocal turn_generation, tts_task, turn_start_elapsed
                     while True:
                         message = await websocket.receive()
                         if message.get("type") == "websocket.disconnect":
@@ -215,6 +255,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
 
                             if control_type == "activity_start":
                                 turn_generation += 1
+                                turn_start_elapsed = time.monotonic() - session_start
                                 director.on_speech_start()
                                 await live_session.send_realtime_input(
                                     activity_start=types.ActivityStart()
@@ -225,7 +266,9 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                 await live_session.send_realtime_input(
                                     activity_end=types.ActivityEnd()
                                 )
-                                asyncio.create_task(run_director_turn(turn_generation))
+                                asyncio.create_task(
+                                    run_director_turn(turn_generation, turn_start_elapsed)
+                                )
                             elif control_type == "slide_change":
                                 state.slide_number = control.get("data", {}).get("slide")
                             elif control_type == "barge_in":

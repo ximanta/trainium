@@ -245,6 +245,7 @@ async def ensure_indexes() -> None:
     await simulations_collection.create_index([("org_id", 1), ("status", 1)])
     await simulations_collection.create_index([("course_id", 1)])
     await recordings_collection.create_index([("simulation_id", 1), ("track", 1)])
+    await transcripts_collection.create_index([("simulation_id", 1)], unique=True)
     await events_collection.create_index([("simulation_id", 1), ("ts_s", 1)])
     await evidence_collection.create_index([("simulation_id", 1), ("competency", 1)])
     await reports_collection.create_index([("simulation_id", 1)], unique=True)
