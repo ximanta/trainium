@@ -6,8 +6,9 @@ class Settings(BaseSettings):
     mongo_db_name: str = "trainium"
 
     gemini_api_key: str = ""
-    gemini_model_live: str = "gemini-3.8-live"
+    gemini_model_live: str = "gemini-3.5-transcribe-live"
     gemini_model_flash: str = "gemini-3.8-flash"
+    gemini_model_flash_lite: str = "gemini-3.5-flash-lite"
     gemini_model_tts: str = "gemini-3.1-flash-tts-preview"
 
     langfuse_public_key: str = ""

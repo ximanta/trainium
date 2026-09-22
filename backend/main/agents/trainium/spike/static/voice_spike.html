@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Trainium M2 voice loop spike</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; }
+  button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+  #status { font-weight: bold; margin: 12px 0; }
+  #log { border: 1px solid #ccc; padding: 12px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
+  table { border-collapse: collapse; margin-top: 20px; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  #summary { margin-top: 16px; font-size: 15px; }
+</style>
+</head>
+<body>
+<h1>Voice loop spike</h1>
+<p>Speak a sentence, pause. The persona should reply within ~2.5s (p95 target). Repeat for 20 turns, then read the summary.</p>
+<button id="startBtn">Start session</button>
+<button id="bargeInBtn" disabled>Barge in (cancel TTS)</button>
+<div id="status">idle</div>
+<div id="log"></div>
+<table id="latencyTable">
+  <thead><tr><th>Turn</th><th>Transcript</th><th>Transcript wait (ms)</th><th>Flash reply (ms)</th><th>TTS first byte (ms)</th><th>Total (ms)</th></tr></thead>
+  <tbody></tbody>
+</table>
+<div id="summary"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.19/dist/bundle.min.js"></script>
+<script>
+const log = (msg) => {
+  const el = document.getElementById('log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+};
+
+const statusEl = document.getElementById('status');
+const setStatus = (s) => { statusEl.textContent = s; };
+
+let ws = null;
+let audioContext = null;
+let micStream = null;
+let vadInstance = null;
+let playbackQueue = [];
+let isPlayingBack = false;
+let latencies = [];
+
+function addLatencyRow(turn, transcript, stages) {
+  const tbody = document.querySelector('#latencyTable tbody');
+  const row = document.createElement('tr');
+  const fmt = (v) => (v === undefined ? '-' : v.toFixed(0));
+  row.innerHTML = `<td>${turn}</td><td>${transcript}</td><td>${fmt(stages.transcript_wait_ms)}</td>` +
+    `<td>${fmt(stages.flash_reply_ms)}</td><td>${fmt(stages.tts_first_byte_ms)}</td><td>${fmt(stages.total_ms)}</td>`;
+  tbody.appendChild(row);
+  latencies.push(stages.total_ms);
+  updateSummary();
+}
+
+function updateSummary() {
+  if (latencies.length === 0) return;
+  const sorted = [...latencies].sort((a, b) => a - b);
+  const p95Index = Math.floor(sorted.length * 0.95);
+  const p95 = sorted[Math.min(p95Index, sorted.length - 1)];
+  const avg = sorted.reduce((a, b) => a + b, 0) / sorted.length;
+  document.getElementById('summary').textContent =
+    `Turns: ${sorted.length} | avg: ${avg.toFixed(0)}ms | p95: ${p95.toFixed(0)}ms | gate: ${p95 < 2500 ? 'PASS (<2.5s)' : 'FAIL (>=2.5s)'}`;
+}
+
+function floatTo16BitPCM(float32Array) {
+  const buffer = new ArrayBuffer(float32Array.length * 2);
+  const view = new DataView(buffer);
+  for (let i = 0; i < float32Array.length; i++) {
+    let s = Math.max(-1, Math.min(1, float32Array[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return buffer;
+}
+
+async function playPCM16(bytes) {
+  playbackQueue.push(bytes);
+  if (!isPlayingBack) {
+    isPlayingBack = true;
+    while (playbackQueue.length > 0) {
+      const chunk = playbackQueue.shift();
+      await playChunk(chunk);
+    }
+    isPlayingBack = false;
+  }
+}
+
+function playChunk(bytes) {
+  return new Promise((resolve) => {
+    const pcm16 = new Int16Array(bytes);
+    const float32 = new Float32Array(pcm16.length);
+    for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 32768;
+
+    const buffer = audioContext.createBuffer(1, float32.length, 24000);
+    buffer.copyToChannel(float32, 0);
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContext.destination);
+    source.onended = resolve;
+    source.start();
+  });
+}
+
+let turnCounter = 0;
+let currentTranscript = '';
+
+document.getElementById('startBtn').addEventListener('click', async () => {
+  setStatus('requesting mic access...');
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
+  audioContext = new AudioContext({ sampleRate: 16000 });
+
+  ws = new WebSocket(`ws://${location.host}/trainium/spike/voice-session`);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => log('WS connected');
+  ws.onmessage = async (event) => {
+    if (typeof event.data === 'string') {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'ready') {
+        setStatus('ready, starting VAD');
+        await startVAD();
+      } else if (msg.type === 'persona_line') {
+        currentTranscript = msg.data.transcript;
+        log(`[transcript] ${msg.data.transcript}`);
+        log(`[persona] ${msg.data.text}`);
+      } else if (msg.type === 'latency') {
+        turnCounter += 1;
+        addLatencyRow(turnCounter, currentTranscript, msg.data);
+      } else if (msg.type === 'turn_complete') {
+        setStatus('listening');
+      } else if (msg.type === 'barge_in_ack') {
+        log('[barge-in acknowledged]');
+      } else if (msg.type === 'error') {
+        log('[error] ' + JSON.stringify(msg.data));
+      } else if (msg.type === 'debug') {
+        log('[debug] ' + msg.data.msg);
+      }
+    } else {
+      await playPCM16(event.data);
+    }
+  };
+  ws.onclose = () => log('WS closed');
+  ws.onerror = (e) => log('WS error: ' + e);
+
+  document.getElementById('bargeInBtn').disabled = false;
+});
+
+document.getElementById('bargeInBtn').addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'barge_in' }));
+  }
+});
+
+async function startVAD() {
+  const source = audioContext.createMediaStreamSource(micStream);
+  const processor = audioContext.createScriptProcessor(4096, 1, 1);
+  source.connect(processor);
+  const silentGain = audioContext.createGain();
+  silentGain.gain.value = 0;
+  processor.connect(silentGain);
+  silentGain.connect(audioContext.destination);
+
+  let speaking = false;
+
+  vadInstance = await vad.MicVAD.new({
+    onSpeechStart: () => {
+      speaking = true;
+      setStatus('speaking...');
+      log('[vad] speech start detected');
+      ws.send(JSON.stringify({ type: 'activity_start' }));
+    },
+    onSpeechEnd: () => {
+      speaking = false;
+      setStatus('processing...');
+      log('[vad] speech end detected');
+      ws.send(JSON.stringify({ type: 'activity_end' }));
+    },
+  });
+  vadInstance.start();
+
+  // Gemini's live transcription expects ~100ms chunks (1024-2048 frames at
+  // 16kHz). The script processor buffer (4096 frames = 256ms) is too large
+  // sent whole, so slice it into 1600-frame (100ms) pieces before sending.
+  const CHUNK_FRAMES = 1600;
+
+  processor.onaudioprocess = (e) => {
+    if (!speaking) return;
+    const input = e.inputBuffer.getChannelData(0);
+    if (ws.readyState !== WebSocket.OPEN) return;
+    for (let offset = 0; offset < input.length; offset += CHUNK_FRAMES) {
+      const slice = input.subarray(offset, Math.min(offset + CHUNK_FRAMES, input.length));
+      ws.send(floatTo16BitPCM(slice));
+    }
+  };
+
+  setStatus('listening');
+  log('VAD started, speak a sentence then pause');
+}
+</script>
+</body>
+</html>
