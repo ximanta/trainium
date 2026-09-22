@@ -26,6 +26,44 @@ ScenarioKind = Literal[
 ]
 
 
+AssetKind = Literal[
+    "pptx", "instructor_guide", "lab_pdf", "assessment", "demo_guide", "objectives"
+]
+
+
+class CourseAsset(BaseModel):
+    kind: AssetKind
+    file_id: str
+    filename: str
+    size_bytes: int
+    sha256: str
+    page_count: Optional[int] = None
+
+
+class SlideContent(BaseModel):
+    slide_number: int
+    title: str
+    body: str
+    notes: str
+    image_file_id: Optional[str] = None
+
+
+class Course(BaseModel):
+    id: str
+    org_id: str
+    owner_id: str
+    title: str
+    description: str = ""
+    status: Literal["uploading", "ingesting", "draft", "published", "failed"] = "uploading"
+    ingest_error: Optional[str] = None
+    assets: list[CourseAsset] = Field(default_factory=list)
+    slides: list[SlideContent] = Field(default_factory=list)
+    rubric_id: Optional[str] = None
+    schema_version: int = 1
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class PersonaTemplate(BaseModel):
     id: str
     org_id: Optional[str] = None

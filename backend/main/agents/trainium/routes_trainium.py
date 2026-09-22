@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 
 from main.agents.trainium.auth import User, get_current_admin, get_current_user
 from main.agents.trainium.db_manager import (
@@ -10,12 +10,21 @@ from main.agents.trainium.db_manager import (
     scenarios_collection,
 )
 from main.agents.trainium.models import Rubric
+from main.agents.trainium.routes_courses import configure_routes_courses
+from main.agents.trainium.storage import download_file
 
 
 def configure_routes_trainium(app: FastAPI) -> None:
+    configure_routes_courses(app)
+
     @app.get("/trainium/health")
     async def health():
         return {"status": "ok", "agent": "trainium"}
+
+    @app.get("/trainium/assets/{file_id}")
+    async def get_asset(file_id: str, user: User = Depends(get_current_user)):
+        content = await download_file(file_id)
+        return Response(content=content, media_type="image/png")
 
     @app.get("/trainium/personas")
     async def list_personas(user: User = Depends(get_current_user)):

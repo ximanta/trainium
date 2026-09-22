@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     langfuse_host: str = ""
 
     cors_origins: str = "http://localhost:3000"
+    soffice_path: str = "soffice"
 
     class Config:
         env_file = ".env"
