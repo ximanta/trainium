@@ -1,0 +1,565 @@
+<!doctype html>
+<title>The Simulation Console</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #1E1B4B;
+    --ink-soft: #443F82;
+    --muted: #6B679E;
+    --line: #E3E1FA;
+    --paper: #FFFFFF;
+    --wash: #F5F3FF;
+    --indigo: #4F46E5;
+    --indigo-deep: #3730A3;
+    --indigo-wash: #EEF0FF;
+    --emerald: #10B981;
+    --emerald-deep: #047857;
+    --emerald-wash: #E7F9F2;
+    --live: #EF4444;
+    --focus: #4F46E5;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #ECEBFC;
+      --ink-soft: #C7C3EE;
+      --muted: #948FCB;
+      --line: #332E63;
+      --paper: #14113A;
+      --wash: #0F0C2E;
+      --indigo: #8B85F5;
+      --indigo-deep: #C0BBFF;
+      --indigo-wash: #23205A;
+      --emerald: #34D399;
+      --emerald-deep: #A7F3D3;
+      --emerald-wash: #10302A;
+      --live: #FB7185;
+      --focus: #8B85F5;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #ECEBFC;
+    --ink-soft: #C7C3EE;
+    --muted: #948FCB;
+    --line: #332E63;
+    --paper: #14113A;
+    --wash: #0F0C2E;
+    --indigo: #8B85F5;
+    --indigo-deep: #C0BBFF;
+    --indigo-wash: #23205A;
+    --emerald: #34D399;
+    --emerald-deep: #A7F3D3;
+    --emerald-wash: #10302A;
+    --live: #FB7185;
+    --focus: #8B85F5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--wash);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  code, .mono { font-family: "IBM Plex Mono", monospace; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 24px; }
+  @media (max-width: 640px) { .wrap { padding-inline: 20px; } }
+
+  h1, h2, h3 {
+    font-family: "Sora", sans-serif;
+    font-weight: 600;
+    text-wrap: balance;
+    margin: 0;
+    color: var(--ink);
+  }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.76rem;
+    letter-spacing: 0.04em;
+    color: var(--indigo-deep);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .eyebrow::before { content: ">"; color: var(--emerald); }
+
+  header.nav { background: var(--paper); border-bottom: 1px solid var(--line); }
+  .nav-row { display: flex; align-items: center; justify-content: space-between; padding-block: 18px; }
+  .wordmark { font-family: "Sora", sans-serif; font-weight: 700; font-size: 1.25rem; letter-spacing: -0.01em; }
+  .wordmark .dot { color: var(--emerald); }
+  nav.links { display: flex; gap: 28px; font-size: 0.9rem; color: var(--ink-soft); }
+  @media (max-width: 720px) { nav.links { display: none; } }
+
+  .role-links {
+    display: flex;
+    gap: 16px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+  }
+  .role-links a {
+    color: var(--ink-soft);
+    text-decoration: none;
+    padding-bottom: 2px;
+    border-bottom: 1px solid transparent;
+    transition: border-color 150ms ease, color 150ms ease;
+  }
+  .role-links a:hover { color: var(--indigo); border-color: var(--indigo); }
+  .role-links .sep { color: var(--line); }
+
+  .btn {
+    font-family: "Sora", sans-serif;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border-radius: 8px;
+    padding: 11px 20px;
+    display: inline-block;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    transition: background 150ms ease, border-color 150ms ease;
+  }
+  .btn-primary { background: var(--indigo); color: #fff; }
+  .btn-primary:hover { background: var(--indigo-deep); }
+  .btn-ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--indigo); background: var(--indigo-wash); }
+
+  .hero {
+    padding-block: 76px 60px;
+    display: grid;
+    grid-template-columns: 0.95fr 1.05fr;
+    gap: 48px;
+    align-items: center;
+  }
+  @media (max-width: 940px) { .hero { grid-template-columns: 1fr; padding-block: 48px 40px; } }
+  .hero h1 { font-size: clamp(2.1rem, 4.2vw, 2.9rem); line-height: 1.16; margin-top: 16px; }
+  .hero .lede { margin-top: 18px; max-width: 46ch; font-size: 1.05rem; color: var(--ink-soft); }
+  .hero-actions { margin-top: 30px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .hero-meta { margin-top: 24px; display: flex; gap: 22px; font-size: 0.82rem; color: var(--muted); flex-wrap: wrap; }
+  .hero-meta strong { color: var(--ink); font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+
+  /* console panel */
+  .console {
+    background: var(--ink);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px -30px rgba(30,27,75,0.5);
+  }
+  .console-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.06);
+  }
+  .console-bar .live { display: inline-flex; align-items: center; gap: 6px; font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: #FCA5A5; }
+  .console-bar .live::before { content:""; width:6px; height:6px; border-radius:50%; background: var(--live); }
+  .console-bar .clock { font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: rgba(255,255,255,0.55); }
+  .console-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: rgba(255,255,255,0.08);
+  }
+  .persona-tile {
+    background: #201C52;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .persona-tile .row1 { display: flex; justify-content: space-between; align-items: center; }
+  .persona-tile .name { font-family: "Sora", sans-serif; font-weight: 600; color: #fff; font-size: 0.92rem; }
+  .persona-tile .state {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.66rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .state.speaking { background: rgba(16,185,129,0.2); color: #6EE7B7; }
+  .state.listening { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
+  .persona-tile p { margin: 0; font-size: 0.8rem; color: rgba(255,255,255,0.7); }
+  .waveform { display: flex; align-items: flex-end; gap: 2px; height: 18px; }
+  .waveform span { width: 3px; background: var(--emerald); border-radius: 2px; opacity: 0.85; }
+
+  .trainer-tile {
+    grid-column: 1 / -1;
+    position: relative;
+    aspect-ratio: 16 / 7;
+    overflow: hidden;
+    background: linear-gradient(135deg, #201C52, #14113A);
+  }
+  .trainer-tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .trainer-tile .row1 {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    z-index: 1;
+  }
+  .trainer-tile .name {
+    background: rgba(20,17,58,0.72);
+    padding: 3px 10px;
+    border-radius: 999px;
+    backdrop-filter: blur(2px);
+  }
+  .console-footer {
+    padding: 12px 16px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.55);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  section { padding-block: 60px; }
+  .section-head { max-width: 62ch; margin-bottom: 40px; }
+  .section-head h2 { font-size: clamp(1.5rem, 2.6vw, 2rem); margin-top: 10px; }
+  .section-head p { margin-top: 12px; color: var(--ink-soft); }
+
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+  }
+  @media (max-width: 860px) { .pipeline { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .pipeline { grid-template-columns: 1fr; } }
+  .stage {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 22px;
+  }
+  .stage .tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    color: var(--emerald-deep);
+    background: var(--emerald-wash);
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .stage h3 { font-size: 1rem; margin-top: 12px; }
+  .stage p { font-size: 0.86rem; color: var(--ink-soft); margin-top: 8px; }
+
+  .analysis {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    align-items: center;
+  }
+  @media (max-width: 860px) { .analysis { grid-template-columns: 1fr; } }
+  .code-panel {
+    background: var(--ink);
+    border-radius: 10px;
+    padding: 22px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.82rem;
+    color: #C7C3EE;
+    overflow-x: auto;
+  }
+  .code-panel .k { color: #8B85F5; }
+  .code-panel .s { color: #6EE7B7; }
+  .code-panel .c { color: rgba(255,255,255,0.4); }
+
+  .personas-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 980px) { .personas-row { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 780px) { .personas-row { grid-template-columns: repeat(2, 1fr); } }
+  .persona-card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .persona-card .id { font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--muted); }
+  .persona-card h3 { font-size: 1rem; margin-top: 6px; }
+  .persona-card p { font-size: 0.85rem; color: var(--ink-soft); margin-top: 8px; }
+
+  .persona-card.create {
+    background: var(--indigo-wash);
+    border: 1px dashed var(--indigo);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .persona-card.create .plus {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--indigo);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Sora", sans-serif;
+    font-size: 1.2rem;
+    font-weight: 600;
+    line-height: 1;
+    margin-bottom: 10px;
+  }
+  .persona-card.create h3 { color: var(--indigo-deep); }
+  .persona-card.create p { color: var(--ink-soft); }
+
+  .cta {
+    background: var(--indigo);
+    border-radius: 14px;
+    padding: 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .cta h2 { color: #fff; font-size: 1.6rem; }
+  .cta p { color: rgba(255,255,255,0.75); margin-top: 8px; max-width: 40ch; }
+  .cta .btn-primary { background: #fff; color: var(--indigo-deep); }
+  .cta .btn-primary:hover { background: var(--indigo-wash); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-block: 26px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    font-family: "IBM Plex Mono", monospace;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  @keyframes rise {
+    0%, 100% { transform: scaleY(0.4); }
+    50% { transform: scaleY(1); }
+  }
+  .waveform span { animation: rise 1.2s ease-in-out infinite; transform-origin: bottom; }
+  .waveform span:nth-child(2) { animation-delay: 0.1s; }
+  .waveform span:nth-child(3) { animation-delay: 0.2s; }
+  .waveform span:nth-child(4) { animation-delay: 0.3s; }
+  .waveform span:nth-child(5) { animation-delay: 0.4s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<header class="nav">
+  <div class="wrap nav-row">
+    <div class="wordmark">trainium<span class="dot">.</span></div>
+    <nav class="links">
+      <a href="#pipeline">Pipeline</a>
+      <a href="#analysis">Analysis</a>
+      <a href="#personas">Personas</a>
+    </nav>
+    <nav class="role-links" aria-label="Role login">
+      <a href="/trainium/admin">Admin login</a>
+      <span class="sep">/</span>
+      <a href="/trainium/app">Trainer login</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <span class="eyebrow">simulated classroom, real signal</span>
+      <h1>A live classroom of AI personas to pressure test how you teach.</h1>
+      <p class="lede">
+        Trainium runs your session against a director-controlled cast of learner personas,
+        streams the turn-by-turn interaction, and hands Gemini the recording to produce
+        a coaching report where every score traces back to a moment in the transcript.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#cta">Request access</a>
+        <a class="btn btn-ghost" href="#pipeline">See the pipeline</a>
+      </div>
+      <div class="hero-meta">
+        <span><strong>4</strong> personas per session</span>
+        <span><strong>&lt;20min</strong> report turnaround</span>
+        <span><strong>100%</strong> evidence-cited scores</span>
+      </div>
+    </div>
+
+    <div class="console" aria-label="Live session console">
+      <div class="console-bar">
+        <span class="live">LIVE · session_4f21</span>
+        <span class="clock">00:14:02</span>
+      </div>
+      <div class="console-grid">
+        <div class="trainer-tile">
+          <div class="row1">
+            <span class="name state speaking">recording, trainer feed</span>
+          </div>
+          <img src="hero-trainer-feed.png" alt="Trainer presenting a slide deck to camera, mid session" />
+        </div>
+        <div class="persona-tile">
+          <div class="row1">
+            <span class="name">Priya</span>
+            <span class="state speaking">speaking</span>
+          </div>
+          <div class="waveform">
+            <span style="height:60%"></span><span style="height:90%"></span>
+            <span style="height:40%"></span><span style="height:75%"></span>
+            <span style="height:55%"></span>
+          </div>
+          <p>"Isn't that the step from the outage case study?"</p>
+        </div>
+        <div class="persona-tile">
+          <div class="row1">
+            <span class="name">Devon</span>
+            <span class="state listening">listening</span>
+          </div>
+          <p>Awaiting turn. Director holding queue.</p>
+        </div>
+        <div class="persona-tile">
+          <div class="row1">
+            <span class="name">Miriam</span>
+            <span class="state listening">listening</span>
+          </div>
+          <p>Tracking slide 14 reference</p>
+        </div>
+        <div class="persona-tile">
+          <div class="row1">
+            <span class="name">Tomas</span>
+            <span class="state listening">listening</span>
+          </div>
+          <p>No input for 6m 40s</p>
+        </div>
+      </div>
+      <div class="console-footer">
+        <span>director: turn-locked</span>
+        <span>gemini-3.8-flash</span>
+      </div>
+    </div>
+  </div>
+
+  <section id="pipeline">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">the pipeline</span>
+        <h2>Upload, teach, and let the graph do the rest.</h2>
+        <p>Ingestion, live session, and analysis are three separate stages, each independently inspectable.</p>
+      </div>
+      <div class="pipeline">
+        <div class="stage">
+          <span class="tag">ingest</span>
+          <h3>Slides become a teaching graph</h3>
+          <p>Your material becomes the beats the Director expects the session to hit.</p>
+        </div>
+        <div class="stage">
+          <span class="tag">direct</span>
+          <h3>Turn-controlled session</h3>
+          <p>Personas never self-initiate speech. The Director gates every turn.</p>
+        </div>
+        <div class="stage">
+          <span class="tag">record</span>
+          <h3>Full-fidelity capture</h3>
+          <p>Audio, video, and transcript are captured together, timestamp-aligned.</p>
+        </div>
+        <div class="stage">
+          <span class="tag">analyze</span>
+          <h3>Evidence-backed report</h3>
+          <p>A LangGraph analysis pipeline scores the session and cites its source.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="analysis">
+    <div class="wrap analysis">
+      <div>
+        <span class="eyebrow">the report contract</span>
+        <h2 style="margin-top:10px;">Every score is a citation, not an opinion.</h2>
+        <p style="margin-top:14px; color:var(--ink-soft);">
+          The analysis graph does not summarize a vibe. It extracts evidence, scores
+          against a rubric, and refuses to emit a number it cannot point to in the
+          recording. That is the same contract closewire uses for negotiation scoring,
+          applied to a classroom instead of a deal room.
+        </p>
+      </div>
+      <div class="code-panel">
+<span class="c">// report.evidence[3]</span><br />
+{<br />
+&nbsp;&nbsp;<span class="k">"competency"</span>: <span class="s">"handling_derailment"</span>,<br />
+&nbsp;&nbsp;<span class="k">"score"</span>: 4.1,<br />
+&nbsp;&nbsp;<span class="k">"timestamp"</span>: <span class="s">"00:14:18"</span>,<br />
+&nbsp;&nbsp;<span class="k">"persona"</span>: <span class="s">"devon"</span>,<br />
+&nbsp;&nbsp;<span class="k">"transcript_ref"</span>: <span class="s">"turn_112"</span><br />
+}
+      </div>
+    </div>
+  </section>
+
+  <section id="personas">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">the cast</span>
+        <h2>Four dispositions, tuned to expose specific gaps.</h2>
+        <p>Each persona has its own reactivity profile, not a fixed script.</p>
+      </div>
+      <div class="personas-row">
+        <div class="persona-card">
+          <span class="id">persona_01</span>
+          <h3>Priya, Skeptic</h3>
+          <p>High challenge frequency. Tests reasoning under pushback.</p>
+        </div>
+        <div class="persona-card">
+          <span class="id">persona_02</span>
+          <h3>Devon, Tangent</h3>
+          <p>High derailment rate. Tests redirect speed and discipline.</p>
+        </div>
+        <div class="persona-card">
+          <span class="id">persona_03</span>
+          <h3>Miriam, Over preparer</h3>
+          <p>Reads ahead. Tests pacing against a learner who is already there.</p>
+        </div>
+        <div class="persona-card">
+          <span class="id">persona_04</span>
+          <h3>Tomas, Quiet</h3>
+          <p>Low unprompted output. Tests whether you actively draw him in.</p>
+        </div>
+        <div class="persona-card create">
+          <span class="plus" aria-hidden="true">+</span>
+          <h3>Create your persona</h3>
+          <p>Upload a deck, PDF, or link. Admins configure new personas from your own material.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="cta">
+    <div class="wrap">
+      <div class="cta">
+        <div>
+          <h2>Run your first simulated session this week.</h2>
+          <p>Bring one deck. We will bring the classroom and the report.</p>
+        </div>
+        <a class="btn btn-primary" href="#">Request access</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap" style="display:flex; justify-content:space-between; width:100%; flex-wrap:wrap; gap:10px;">
+    <span>trainium, ai trainer simulator</span>
+    <span>v1 · no-auth dev build</span>
+  </div>
+</footer>
