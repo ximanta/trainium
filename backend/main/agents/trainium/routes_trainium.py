@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Response
 
 from main.agents.trainium.auth import User, get_current_admin, get_current_user
 from main.agents.trainium.db_manager import (
@@ -100,13 +100,3 @@ def configure_routes_trainium(app: FastAPI) -> None:
         )
         updated = await rubrics_collection.find_one({"id": rubric_id}, {"_id": 0})
         return updated
-
-    @app.websocket("/trainium/ws/session")
-    async def ws_session(websocket: WebSocket):
-        await websocket.accept()
-        try:
-            while True:
-                data = await websocket.receive_json()
-                await websocket.send_json({"type": "echo", "data": data})
-        except WebSocketDisconnect:
-            pass

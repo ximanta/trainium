@@ -21,6 +21,11 @@ class SessionState:
     objectives_covered: list[str] = field(default_factory=list)
     elapsed_s: float = 0.0
     transcript_recent: list[str] = field(default_factory=list)  # last ~90s of trainer speech
+    # The current, still-being-spoken utterance, updated live as partial
+    # transcript arrives. Cleared once the turn settles and its final text
+    # is appended to transcript_recent instead. Exists so speculative Layer B
+    # runs can see what is being said right now, not just prior turns.
+    in_progress_partial: str = ""
     slide_number: int | None = None
     persona_states: dict[str, PersonaState] = field(default_factory=dict)
     recent_events: list[dict] = field(default_factory=list)
@@ -36,6 +41,7 @@ class SessionState:
         # exact time-windowing needs per-utterance timestamps, deferred until
         # real session timing is wired in.
         self.transcript_recent = self.transcript_recent[-10:]
+        self.in_progress_partial = ""
 
     def interventions_in_last_10min(self) -> int:
         cutoff = self.elapsed_s - 600

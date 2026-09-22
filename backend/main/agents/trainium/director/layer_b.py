@@ -29,6 +29,7 @@ Objectives covered so far: {objectives_covered}
 
 Trainer said recently (most recent last):
 {transcript_recent}
+Trainer is currently mid-sentence saying (not finished yet): {in_progress_partial}
 
 Eligible personas (not on cooldown):
 {persona_digest}
@@ -79,6 +80,7 @@ async def decide_and_speak(
         elapsed_s=state.elapsed_s,
         objectives_covered=state.objectives_covered,
         transcript_recent="\n".join(state.transcript_recent[-6:]) or "(nothing yet)",
+        in_progress_partial=state.in_progress_partial or "(nothing yet)",
         persona_digest=_format_persona_digest(eligible_personas),
         recent_events=state.recent_events,
     )

@@ -117,5 +117,7 @@ class Simulation(BaseModel):
     ] = "scheduled"
     persona_ids: list[str] = Field(default_factory=list)
     scenario_id: Optional[str] = None
+    target_objective_ids: list[str] = Field(default_factory=list)
+    duration_min: int = 30
     schema_version: int = 1
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
