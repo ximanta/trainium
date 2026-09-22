@@ -1,7 +1,15 @@
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
 from main.agents.trainium.auth import User, get_current_admin, get_current_user
-from main.agents.trainium.db_manager import persona_templates_collection, scenarios_collection
+from main.agents.trainium.db_manager import (
+    persona_templates_collection,
+    rubrics_collection,
+    scenarios_collection,
+)
+from main.agents.trainium.models import Rubric
 
 
 def configure_routes_trainium(app: FastAPI) -> None:
@@ -22,6 +30,67 @@ def configure_routes_trainium(app: FastAPI) -> None:
     @app.get("/trainium/admin/whoami")
     async def admin_whoami(user: User = Depends(get_current_admin)):
         return user
+
+    # Rubrics. Read is available to any authenticated user, so the trainer
+    # side can show what a session will be evaluated against. Write is
+    # admin only.
+
+    @app.get("/trainium/rubrics")
+    async def list_rubrics(user: User = Depends(get_current_user)):
+        cursor = rubrics_collection.find({}, {"_id": 0})
+        return await cursor.to_list(length=None)
+
+    @app.get("/trainium/rubrics/{rubric_id}")
+    async def get_rubric(rubric_id: str, user: User = Depends(get_current_user)):
+        rubric = await rubrics_collection.find_one({"id": rubric_id}, {"_id": 0})
+        if rubric is None:
+            raise HTTPException(status_code=404, detail="Rubric not found")
+        return rubric
+
+    @app.post("/trainium/admin/rubrics")
+    async def create_rubric(body: Rubric, user: User = Depends(get_current_admin)):
+        rubric = body.model_copy(
+            update={
+                "id": body.id or f"rubric_{uuid.uuid4().hex[:12]}",
+                "org_id": user.org_id,
+                "created_by": user.id,
+                "status": "draft",
+                "version": 1,
+            }
+        )
+        await rubrics_collection.insert_one(rubric.model_dump())
+        return rubric
+
+    @app.patch("/trainium/admin/rubrics/{rubric_id}")
+    async def update_rubric(
+        rubric_id: str, body: dict, user: User = Depends(get_current_admin)
+    ):
+        existing = await rubrics_collection.find_one({"id": rubric_id})
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Rubric not found")
+        body.pop("id", None)
+        body.pop("org_id", None)
+        body.pop("created_by", None)
+        body["updated_at"] = datetime.now(timezone.utc)
+        await rubrics_collection.update_one({"id": rubric_id}, {"$set": body})
+        updated = await rubrics_collection.find_one({"id": rubric_id}, {"_id": 0})
+        return updated
+
+    @app.post("/trainium/admin/rubrics/{rubric_id}/publish")
+    async def publish_rubric(rubric_id: str, user: User = Depends(get_current_admin)):
+        existing = await rubrics_collection.find_one({"id": rubric_id})
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Rubric not found")
+        if not existing.get("competencies"):
+            raise HTTPException(
+                status_code=400, detail="Cannot publish a rubric with no competencies"
+            )
+        await rubrics_collection.update_one(
+            {"id": rubric_id},
+            {"$set": {"status": "published", "updated_at": datetime.now(timezone.utc)}},
+        )
+        updated = await rubrics_collection.find_one({"id": rubric_id}, {"_id": 0})
+        return updated
 
     @app.websocket("/trainium/ws/session")
     async def ws_session(websocket: WebSocket):

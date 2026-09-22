@@ -4,6 +4,7 @@ courses_collection = db["trainium_courses"]
 teaching_graphs_collection = db["trainium_teaching_graphs"]
 persona_templates_collection = db["trainium_persona_templates"]
 scenarios_collection = db["trainium_scenarios"]
+rubrics_collection = db["trainium_rubrics"]
 simulations_collection = db["trainium_simulations"]
 recordings_collection = db["trainium_recordings"]
 transcripts_collection = db["trainium_transcripts"]
@@ -138,9 +139,105 @@ SCENARIO_SEED = [
 ]
 
 
+# Default rubric (spec §24), seeded once so sessions have something to
+# evaluate against out of the box. Admins can edit this or create new ones.
+# Anchor text here is a starting point, not final: the architecture doc's
+# guidance to write anchors with a real training manager still applies before
+# this is relied on for certification decisions.
+DEFAULT_RUBRIC_SEED = {
+    "id": "rubric_default_v1",
+    "org_id": None,
+    "name": "Default Trainer Evaluation",
+    "description": "Baseline rubric covering the seven core training competencies.",
+    "status": "published",
+    "version": 1,
+    "created_by": None,
+    "competencies": [
+        {
+            "key": "concept_explanation",
+            "label": "Concept Explanation",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Explanations are inaccurate or missing.",
+                "3": "Explanations are accurate but lack concrete examples.",
+                "5": "Explanations are accurate and use at least one concrete analogy or example.",
+            },
+        },
+        {
+            "key": "learner_engagement",
+            "label": "Learner Engagement",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Learners are rarely invited into the discussion.",
+                "3": "Learners are occasionally invited into the discussion.",
+                "5": "Learners are consistently and specifically drawn into the discussion.",
+            },
+        },
+        {
+            "key": "question_handling",
+            "label": "Question Handling",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Questions are deflected or answered incorrectly.",
+                "3": "Questions are answered correctly but without elaboration.",
+                "5": "Questions are answered correctly, with elaboration tied to the material.",
+            },
+        },
+        {
+            "key": "demo_delivery",
+            "label": "Demo Delivery",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Demo is skipped, fails, or is not recovered from.",
+                "3": "Demo completes with minor issues.",
+                "5": "Demo completes smoothly and reinforces the concept being taught.",
+            },
+        },
+        {
+            "key": "lab_facilitation",
+            "label": "Lab Facilitation",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Learners are left without guidance during the lab.",
+                "3": "Guidance is available but reactive only.",
+                "5": "Guidance is proactive and tailored to individual learner progress.",
+            },
+        },
+        {
+            "key": "classroom_management",
+            "label": "Classroom Management",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Disruptions or off-topic threads are not addressed.",
+                "3": "Disruptions are addressed but interrupt the flow of the session.",
+                "5": "Disruptions are addressed smoothly without losing session pace.",
+            },
+        },
+        {
+            "key": "time_management",
+            "label": "Time Management",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Session significantly overruns or underruns the plan.",
+                "3": "Session stays roughly on schedule with minor drift.",
+                "5": "Session covers all planned material within the allotted time.",
+            },
+        },
+    ],
+}
+
+
 async def ensure_indexes() -> None:
     await courses_collection.create_index([("org_id", 1), ("status", 1)])
     await courses_collection.create_index([("owner_id", 1)])
+    await rubrics_collection.create_index([("org_id", 1), ("status", 1)])
     await teaching_graphs_collection.create_index(
         [("course_id", 1), ("version", -1)], unique=True
     )
@@ -164,3 +261,6 @@ async def seed_reference_data() -> None:
         await scenarios_collection.update_one(
             {"id": scenario["id"]}, {"$setOnInsert": scenario}, upsert=True
         )
+    await rubrics_collection.update_one(
+        {"id": DEFAULT_RUBRIC_SEED["id"]}, {"$setOnInsert": DEFAULT_RUBRIC_SEED}, upsert=True
+    )
