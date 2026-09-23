@@ -96,12 +96,16 @@ function VideoTile({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
         ) : (
-          <div
-            className={`flex h-full w-full items-center justify-center text-lg font-semibold text-white ${avatarColor(
-              personaId
-            )}`}
-          >
-            {initials(name)}
+          // Camera-off placeholder, the Teams/Zoom convention: a coloured
+          // initials circle centred on the dark tile.
+          <div className="flex h-full w-full items-center justify-center bg-slate-800">
+            <span
+              className={`flex h-14 w-14 items-center justify-center rounded-full text-base font-semibold text-white ${avatarColor(
+                personaId
+              )}`}
+            >
+              {initials(name)}
+            </span>
           </div>
         ))}
 
@@ -485,8 +489,10 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
                 className={`h-full w-full object-cover ${cameraOn ? "" : "hidden"}`}
               />
               {!cameraOn && (
-                <div className="flex h-full w-full items-center justify-center bg-slate-700 text-sm font-semibold text-white">
-                  YOU
+                <div className="flex h-full w-full items-center justify-center bg-slate-800">
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-600 text-base font-semibold text-white">
+                    YOU
+                  </span>
                 </div>
               )}
             </>
