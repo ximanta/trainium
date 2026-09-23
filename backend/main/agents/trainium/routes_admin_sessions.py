@@ -192,9 +192,34 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
         personas = await _resolve_personas(
             simulation.get("persona_ids", []), simulation.get("persona_overrides", {})
         )
+
+        # The trainer prepares against the real deck, so the green room needs
+        # the slides themselves, not just a count.
+        slides: list[dict] = []
+        course: dict = {}
+        if simulation.get("course_id"):
+            course = await courses_collection.find_one(
+                {"id": simulation["course_id"]}, {"_id": 0, "title": 1, "slides": 1}
+            ) or {}
+            slides = [
+                {
+                    "slide_number": s["slide_number"],
+                    "title": s.get("title", ""),
+                    "image_file_id": s.get("image_file_id"),
+                }
+                for s in course.get("slides", [])
+                if s.get("image_file_id")
+            ]
+
         return {
             "simulation_id": simulation["id"],
             "title": simulation.get("title", ""),
             "course_id": simulation.get("course_id"),
+            "course_title": course.get("title", ""),
+            "audience": simulation.get("audience", ""),
+            "trainer_name": simulation.get("trainer_name", ""),
+            "trainer_address": simulation.get("trainer_address", "name"),
+            "duration_min": simulation.get("duration_min", 30),
             "personas": personas,
+            "slides": slides,
         }

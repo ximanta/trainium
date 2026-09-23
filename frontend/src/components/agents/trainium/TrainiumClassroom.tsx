@@ -159,7 +159,15 @@ function VideoTile({
   );
 }
 
-export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
+export function TrainiumClassroom({
+  simulationId,
+  autoJoin = false,
+}: {
+  simulationId: string;
+  /** Connect on mount. Set when arriving from the green room, where the
+   *  trainer has already pressed start and should not have to press join too. */
+  autoJoin?: boolean;
+}) {
   const [status, setStatus] = useState("Not joined");
   const [joined, setJoined] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -209,6 +217,18 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript, pendingSpeaker]);
+
+  // Arriving from the green room: connect straight away. Guarded by a ref
+  // because React runs effects twice in development and two join() calls would
+  // open two sockets.
+  const autoJoinedRef = useRef(false);
+  useEffect(() => {
+    if (!autoJoin || autoJoinedRef.current) return;
+    autoJoinedRef.current = true;
+    void join();
+    // join is stable for the component's lifetime and depends only on refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoJoin]);
 
   function updateParticipant(personaId: string, patch: Partial<Participant>) {
     setParticipants((prev) =>
