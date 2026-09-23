@@ -61,6 +61,11 @@ function initials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+function formatClock(seconds: number): string {
+  const s = Math.max(0, seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 function slideSrc(fileId: string): string {
   return `${process.env.NEXT_PUBLIC_API_URL}/trainium/assets/${fileId}`;
 }
@@ -182,6 +187,11 @@ export function TrainiumClassroom({
   // as the app having frozen.
   const [pendingSpeaker, setPendingSpeaker] = useState<string | null>(null);
   const [floorHeld, setFloorHeld] = useState(false);
+  // Driven by the server, not a local interval: the deadline has to survive a
+  // page reload, since it is a cost ceiling rather than a display.
+  const [remainingS, setRemainingS] = useState<number | null>(null);
+  const [nudge, setNudge] = useState<number | null>(null);
+  const [endedReason, setEndedReason] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -369,6 +379,19 @@ export function TrainiumClassroom({
           break;
         case "floor_state":
           setFloorHeld(Boolean(msg.data.held));
+          break;
+        case "time":
+          setRemainingS(Number(msg.data.remaining_s));
+          break;
+        case "time_nudge":
+          setNudge(Number(msg.data.remaining_s));
+          // Long enough to notice while looking elsewhere, short enough not to
+          // sit over the slide while the trainer is mid-explanation.
+          setTimeout(() => setNudge(null), 8000);
+          break;
+        case "session_ended":
+          setEndedReason(String(msg.data.reason ?? "time"));
+          setStatus("Session ended");
           break;
         case "persona_muted":
           updateParticipant(msg.data.persona_id, { muted: msg.data.muted });
@@ -656,6 +679,32 @@ export function TrainiumClassroom({
             </div>
           )}
 
+          {/* Top centre, away from the speaking pill and the slide controls,
+              and it dismisses itself. A nudge the trainer has to close would
+              interrupt exactly what it is warning them about. */}
+          {nudge !== null && !endedReason && (
+            <div
+              role="status"
+              className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-white/95 px-4 py-1.5 text-xs font-medium shadow-lg backdrop-blur"
+            >
+              {nudge <= 60
+                ? "Wrapping up in about a minute"
+                : `${Math.round(nudge / 60)} minutes remaining`}
+            </div>
+          )}
+
+          {endedReason && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/85 backdrop-blur-sm">
+              <div className="px-8 text-center">
+                <p className="text-lg font-medium text-white">Session complete</p>
+                <p className="mt-2 text-sm text-slate-300">
+                  The time allotted for this session is up. Your transcript has been
+                  saved.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* One pill, two states. The pending one is what covers the TTS gap,
               so the room never looks frozen between decision and voice. */}
           {(speakingNow || pendingSpeaker) && (
@@ -713,7 +762,12 @@ export function TrainiumClassroom({
 
         {/* Control bar */}
         <div className="flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-2">
-          {!joined ? (
+          {endedReason ? (
+            <Button variant="outline" onClick={leave}>
+              <PhoneOff className="mr-1.5 h-4 w-4" />
+              Close
+            </Button>
+          ) : !joined ? (
             <Button onClick={join}>Join session</Button>
           ) : (
             <>
@@ -765,6 +819,23 @@ export function TrainiumClassroom({
                 Leave
               </Button>
             </>
+          )}
+          {/* Quiet by default and only colours up near the end, so the clock
+              is available at a glance without pulling attention while there is
+              plenty of time left. */}
+          {remainingS !== null && (
+            <span
+              className={`ml-3 font-mono text-xs tabular-nums ${
+                remainingS <= 60
+                  ? "font-medium text-destructive"
+                  : remainingS <= 300
+                    ? "text-amber-700"
+                    : "text-muted-foreground"
+              }`}
+              title="Time remaining in this session"
+            >
+              {formatClock(remainingS)}
+            </span>
           )}
           <span className="ml-3 text-xs text-muted-foreground">{status}</span>
         </div>

@@ -244,8 +244,8 @@ export function GreenRoom({
           <p className="mt-1 text-sm text-muted-foreground">
             {trainerName ? `${trainerName}, you are` : "You are"} teaching{" "}
             {personas.length} {personas.length === 1 ? "learner" : "learners"}
-            {courseTitle ? ` through ${courseTitle}` : ""}. Planned for about{" "}
-            {durationMin} minutes.
+            {courseTitle ? ` through ${courseTitle}` : ""}. The session runs for{" "}
+            {durationMin} minutes and then closes itself.
           </p>
         </div>
         <div className="shrink-0 text-right">

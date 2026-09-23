@@ -33,6 +33,18 @@ class DirectorPolicy:
     multi_learner_p: float = 0.12
     group_discussion_p: float = 0.03
 
+    def turn_budget(self, duration_s: float) -> int:
+        """Hard ceiling on persona turns for a session of this length.
+
+        Derived from the intended pace rather than picked: the policy already
+        targets `max_interventions_per_10min`, so the budget is that rate plus
+        half again, which absorbs the hard triggers (open questions, long
+        pauses) that legitimately bypass the probability roll without letting
+        a misbehaving Director spend without limit.
+        """
+        expected = (duration_s / 600.0) * self.max_interventions_per_10min
+        return max(10, int(expected * 1.5))
+
     def should_open_gate(
         self,
         state: SessionState,
@@ -47,6 +59,11 @@ class DirectorPolicy:
             (p.last_spoke_at for p in state.persona_states.values()), default=-999.0
         )
         since_last = state.elapsed_s - last_intervention
+
+        # Out of time or out of turns: nothing reopens the gate, including the
+        # hard triggers, because both are cost ceilings rather than pacing.
+        if state.out_of_budget():
+            return False
 
         # A held floor outranks every trigger below, including the pause one: a
         # trainer who says "let me explain first" and then pauses to think is

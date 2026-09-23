@@ -51,6 +51,7 @@ export function SessionBuilder() {
   const [audience, setAudience] = useState("");
   const [trainerName, setTrainerName] = useState("");
   const [trainerAddress, setTrainerAddress] = useState<TrainerAddress>("name");
+  const [durationMin, setDurationMin] = useState(30);
   // Drafts hold the full editable state for everyone in the room, seeded from
   // the template. Presence in this map is what "in the room" means.
   const [room, setRoom] = useState<Record<string, PersonaDraft>>({});
@@ -131,6 +132,7 @@ export function SessionBuilder() {
         audience,
         trainer_name: trainerName,
         trainer_address: trainerAddress,
+        duration_min: durationMin,
         course_id: courseId || null,
         persona_ids: ids,
         persona_overrides,
@@ -188,6 +190,7 @@ export function SessionBuilder() {
             setCourseId("");
             setTrainerName("");
             setTrainerAddress("name");
+            setDurationMin(30);
           }}
         >
           Create another session
@@ -214,6 +217,30 @@ export function SessionBuilder() {
               className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
             />
           </label>
+
+          <div>
+            <span className="text-sm font-medium">How long</span>
+            <select
+              value={durationMin}
+              onChange={(e) => setDurationMin(Number(e.target.value))}
+              className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              aria-label="Session duration"
+            >
+              {/* Floor of 15: with a 180s per-persona cooldown, a shorter
+                  session leaves most of the room silent and reads as broken.
+                  Ceiling of 45: the length of a real module, beyond which the
+                  Live API reconnections stack up. */}
+              {[15, 20, 30, 45].map((m) => (
+                <option key={m} value={m}>
+                  {m} minutes
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              The session closes itself when the time is up, so an abandoned tab
+              cannot keep running.
+            </span>
+          </div>
 
           <div>
             <span className="text-sm font-medium">Teaching material</span>

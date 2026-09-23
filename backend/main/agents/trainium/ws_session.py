@@ -12,8 +12,10 @@ Director. This is the real multi-persona, Director-driven loop.
 import asyncio
 import base64
 import json
+import math
 import time
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google import genai
@@ -32,6 +34,12 @@ from main.agents.trainium.director.speculative import SpeculativeDirector
 from main.agents.trainium.director.state import PersonaState, create_session, remove_session
 from main.agents.trainium.voices import accent_prompt_for_voice
 from main.config import settings
+
+# Remaining-time marks that get an explicit nudge, in seconds. Ten and five
+# minutes are the points where a trainer can still change what they cover; one
+# minute is a warning that it is about to close. Kept few on purpose, since the
+# clock is always visible and a nudge every few minutes would be nagging.
+NUDGE_MARKS_S = (600, 300, 60)
 
 
 async def _ws_send_json(websocket: WebSocket, payload: dict) -> None:
@@ -167,6 +175,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
         state.audience = simulation.get("audience", "")
         state.trainer_name = simulation.get("trainer_name", "")
         state.trainer_address = simulation.get("trainer_address", "name")
+        state.duration_s = float(simulation.get("duration_min", 30)) * 60.0
         state.current_objective_id = (
             simulation.get("target_objective_ids") or [None]
         )[0]
@@ -195,10 +204,14 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             if simulation.get(key) is not None
         }
         policy = DirectorPolicy(**policy_overrides)
+        state.max_turns = policy.turn_budget(state.duration_s)
         director = SpeculativeDirector(policy)
         client = genai.Client(api_key=settings.gemini_api_key)
 
         session_start = time.monotonic()
+        # Outside the reconnect loop: a Live API drop must not replay nudges
+        # the trainer has already seen.
+        nudged: set[int] = set()
 
         live_config = types.LiveConnectConfig(
             response_modalities=[types.Modality.TEXT],
@@ -388,6 +401,84 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                         )
                         await _ws_send_json(websocket, {"type": "ready", "data": {}})
                         roster_sent = True
+                        # Connecting to the Live API takes a few seconds, and
+                        # charging those to the trainer would end the session
+                        # early. Push the deadline out by the setup cost once,
+                        # rather than rebasing session_start, which every other
+                        # timing site measures against.
+                        state.duration_s += time.monotonic() - session_start
+
+                    async def run_clock():
+                        """Push the remaining time and end the session at zero.
+
+                        Server-authoritative on purpose: a client-side timer is
+                        bypassed by a page reload, and the whole point is a cost
+                        ceiling that holds regardless of what the browser does.
+                        """
+                        # Marks at or above the session length are retired
+                        # silently. A 20-minute session must not open by
+                        # announcing "10 minutes remaining", and a session
+                        # shorter than a mark can never meaningfully cross it.
+                        for mark in NUDGE_MARKS_S:
+                            if state.duration_s <= mark:
+                                nudged.add(mark)
+
+                        # Tick on whole seconds of the session, counted from
+                        # the shared origin rather than by adding 1.0 each
+                        # time, so neither a late start nor a slow send lets
+                        # the deadline drift.
+                        next_tick = math.floor(time.monotonic() - session_start) + 1
+                        while True:
+                            delay = next_tick - (time.monotonic() - session_start)
+                            if delay > 0:
+                                await asyncio.sleep(delay)
+                            next_tick += 1
+                            state.elapsed_s = time.monotonic() - session_start
+                            remaining = state.remaining_s
+
+                            # Only the largest mark just crossed, so a slow
+                            # tick cannot stack two nudges into one moment.
+                            due = [m for m in NUDGE_MARKS_S if remaining <= m and m not in nudged]
+                            if due:
+                                nudged.update(due)
+                                await _ws_send_json(
+                                    websocket,
+                                    {
+                                        "type": "time_nudge",
+                                        "data": {"remaining_s": int(max(due))},
+                                    },
+                                )
+
+                            # One tick a second is cheap and keeps the client
+                            # honest even if it was reloaded mid-session.
+                            # Rounded up so the clock reads 1:00 rather than
+                            # 0:59 for most of the final minute.
+                            await _ws_send_json(
+                                websocket,
+                                {
+                                    "type": "time",
+                                    "data": {
+                                        "remaining_s": math.ceil(remaining),
+                                        "duration_s": int(state.duration_s),
+                                    },
+                                },
+                            )
+
+                            if remaining <= 0:
+                                state.ended = True
+                                if tts_task is not None and not tts_task.done():
+                                    tts_task.cancel()
+                                await _ws_send_json(
+                                    websocket,
+                                    {
+                                        "type": "session_ended",
+                                        "data": {
+                                            "reason": "time",
+                                            "turns": state.turns_taken,
+                                        },
+                                    },
+                                )
+                                return
 
                     async def relay_client_to_live():
                         nonlocal turn_generation, tts_task, turn_start_elapsed
@@ -517,13 +608,20 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                     # transcription.
                     relay_up = asyncio.create_task(relay_client_to_live())
                     relay_down = asyncio.create_task(relay_live_to_client())
+                    clock = asyncio.create_task(run_clock())
                     done, pending = await asyncio.wait(
-                        [relay_up, relay_down], return_when=asyncio.FIRST_COMPLETED
+                        [relay_up, relay_down, clock],
+                        return_when=asyncio.FIRST_COMPLETED,
                     )
                     for task in pending:
                         task.cancel()
 
-                    if relay_up in done and not relay_up.cancelled():
+                    if clock in done and not clock.cancelled():
+                        # Time is up. The session is over for good, so this
+                        # must not fall through to the reconnect branch.
+                        clock.result()
+                        client_gone = True
+                    elif relay_up in done and not relay_up.cancelled():
                         # The client hung up, so the session is genuinely over.
                         relay_up.result()
                         client_gone = True
@@ -553,4 +651,19 @@ def configure_routes_ws_session(app: FastAPI) -> None:
 
         if tts_task is not None and not tts_task.done():
             tts_task.cancel()
+
+        # Record how the session finished. Without this a simulation stays
+        # "scheduled" forever and there is no way to tell a completed session
+        # from one whose tab was closed after thirty seconds.
+        await simulations_collection.update_one(
+            {"id": simulation_id},
+            {
+                "$set": {
+                    "status": "complete" if state.ended else "scheduled",
+                    "ended_at": datetime.now(timezone.utc),
+                    "actual_duration_s": round(state.elapsed_s),
+                    "turns_taken": state.turns_taken,
+                }
+            },
+        )
         remove_session(simulation_id)

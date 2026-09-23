@@ -57,6 +57,25 @@ class SessionState:
     # but may still raise a hand, so the queue builds visibly and the trainer
     # can see who is waiting.
     floor_held: bool = False
+    # How long the admin allotted. The session ends itself at this point so an
+    # abandoned tab cannot keep spending on LLM calls.
+    duration_s: float = 1800.0
+    # Total persona turns this session, and the ceiling on them. Duration
+    # bounds spend by proxy; this bounds it directly, so a Director that
+    # somehow fires every few seconds still cannot run the bill up.
+    turns_taken: int = 0
+    max_turns: int = 0
+    ended: bool = False
+
+    @property
+    def remaining_s(self) -> float:
+        return max(0.0, self.duration_s - self.elapsed_s)
+
+    def out_of_budget(self) -> bool:
+        """True once the session should stop generating, for either reason."""
+        return self.elapsed_s >= self.duration_s or (
+            self.max_turns > 0 and self.turns_taken >= self.max_turns
+        )
     # Latest frame of the trainer's shared screen as JPEG bytes, or None when
     # not sharing. The client only sends a new frame when the screen actually
     # changed, so this is refreshed rarely rather than every turn.
@@ -90,6 +109,9 @@ class SessionState:
 
     def record_intervention(self, persona_id: str) -> None:
         self.intervention_count_window.append(self.elapsed_s)
+        # Counted here because this is the one place every speaking path goes
+        # through, including a persona called on after raising a hand.
+        self.turns_taken += 1
         if persona_id in self.persona_states:
             self.persona_states[persona_id].last_spoke_at = self.elapsed_s
 
