@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Check, Copy, Link2, Plus, Users } from "lucide-react";
 
 import { api } from "@/api/axios";
@@ -26,6 +27,8 @@ type Course = {
 
 
 const DEFAULT_SPEAK_PROBABILITY = 0.2;
+// Matches the backend default, used when an override does not name a voice.
+const DEFAULT_VOICE_ID = "Kore";
 
 // A custom learner starts from a blank character rather than a template, so the
 // admin writes the behaviour themselves. Ids are client-side only; the backend
@@ -41,7 +44,9 @@ function draftFromTemplate(t: PersonaTemplate): PersonaDraft {
   };
 }
 
-export function SessionBuilder() {
+/** Creates a session, or edits one when given `sessionId`. Same form either
+ *  way: the fields an admin sets are identical, only the request differs. */
+export function SessionBuilder({ sessionId }: { sessionId?: string } = {}) {
   const [personas, setPersonas] = useState<PersonaTemplate[]>([]);
   const [voices, setVoices] = useState<Voice[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -69,6 +74,51 @@ export function SessionBuilder() {
 
   const [customs, setCustoms] = useState<PersonaTemplate[]>([]);
   const allPersonas = useMemo(() => [...personas, ...customs], [personas, customs]);
+
+  // Editing: load what was saved. Custom learners have no template, so they
+  // are rebuilt from their overrides, which is where their whole character
+  // lives.
+  useEffect(() => {
+    if (!sessionId) return;
+    api
+      .get(`/trainium/admin/sessions/${sessionId}`)
+      .then((r) => {
+        const s = r.data;
+        setTitle(s.title ?? "");
+        setAudience(s.audience ?? "");
+        setCourseId(s.course_id ?? "");
+        setDurationMin(s.duration_min ?? 30);
+
+        const overrides: Record<string, PersonaDraft> = s.persona_overrides ?? {};
+        const ids: string[] = s.persona_ids ?? [];
+        setRoom(
+          Object.fromEntries(
+            ids.map((id) => [
+              id,
+              {
+                display_name: overrides[id]?.display_name ?? "",
+                profile: overrides[id]?.profile ?? "",
+                voice_id: overrides[id]?.voice_id ?? DEFAULT_VOICE_ID,
+                speak_probability:
+                  overrides[id]?.speak_probability ?? DEFAULT_SPEAK_PROBABILITY,
+              },
+            ])
+          )
+        );
+        setCustoms(
+          ids
+            .filter((id) => id.startsWith(CUSTOM_PREFIX))
+            .map((id) => ({
+              id,
+              name: overrides[id]?.display_name || "Custom learner",
+              type: "custom",
+              profile: overrides[id]?.profile ?? "",
+              voice_id: overrides[id]?.voice_id ?? DEFAULT_VOICE_ID,
+            }))
+        );
+      })
+      .catch(() => setError("Could not load that session."));
+  }, [sessionId]);
 
   function toggle(id: string) {
     setRoom((prev) => {
@@ -124,17 +174,21 @@ export function SessionBuilder() {
         ids.map((id) => [id, room[id]])
       );
 
-      const created = await api.post("/trainium/admin/sessions", {
+      const payload = {
         title: title || "Untitled session",
         audience,
         duration_min: durationMin,
         course_id: courseId || null,
         persona_ids: ids,
         persona_overrides,
-      });
-      const published = await api.post(
-        `/trainium/admin/sessions/${created.data.id}/publish`
-      );
+      };
+
+      // Publishing is idempotent and keeps the existing token, so editing and
+      // republishing does not break a link already sent to a trainer.
+      const id = sessionId
+        ? (await api.patch(`/trainium/admin/sessions/${sessionId}`, payload)).data.id
+        : (await api.post("/trainium/admin/sessions", payload)).data.id;
+      const published = await api.post(`/trainium/admin/sessions/${id}/publish`);
       setJoinUrl(`${window.location.origin}${published.data.join_path}`);
     } catch (e) {
       setError(
@@ -157,11 +211,12 @@ export function SessionBuilder() {
       <div className="mx-auto max-w-xl rounded-xl border bg-card p-6">
         <div className="flex items-center gap-2 text-sm font-medium text-green-700">
           <Check className="h-4 w-4" />
-          Session published
+          {sessionId ? "Changes saved" : "Session published"}
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
-          Send this link to the trainer. They land straight in the classroom, with the
-          material and learners already set up.
+          {sessionId
+            ? "The link is unchanged, so anyone you already sent it to will get the updated session."
+            : "Send this link to the trainer. They land straight in the classroom, with the material and learners already set up."}
         </p>
         <div className="mt-4 flex items-center gap-2">
           <code className="flex-1 truncate rounded-md bg-muted px-3 py-2 text-sm">
@@ -172,22 +227,33 @@ export function SessionBuilder() {
             <span className="ml-1.5">{copied ? "Copied" : "Copy"}</span>
           </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4"
-          onClick={() => {
-            setJoinUrl(null);
-            setRoom({});
-            setCustoms([]);
-            setTitle("");
-            setAudience("");
-            setCourseId("");
-            setDurationMin(30);
-          }}
-        >
-          Create another session
-        </Button>
+        <div className="mt-4 flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/trainium/admin">All sessions</Link>
+          </Button>
+          {!sessionId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setJoinUrl(null);
+                setRoom({});
+                setCustoms([]);
+                setTitle("");
+                setAudience("");
+                setCourseId("");
+                setDurationMin(30);
+              }}
+            >
+              Create another
+            </Button>
+          )}
+          {sessionId && (
+            <Button variant="outline" size="sm" onClick={() => setJoinUrl(null)}>
+              Keep editing
+            </Button>
+          )}
+        </div>
       </div>
     );
   }
@@ -285,7 +351,11 @@ export function SessionBuilder() {
             {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
             <Button onClick={publish} disabled={busy || count === 0} className="mt-3 w-full">
               <Link2 className="mr-1.5 h-4 w-4" />
-              {busy ? "Publishing..." : "Publish and get link"}
+              {busy
+                ? "Saving..."
+                : sessionId
+                  ? "Save and get link"
+                  : "Publish and get link"}
             </Button>
           </div>
         </div>

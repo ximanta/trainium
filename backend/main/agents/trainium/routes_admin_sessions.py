@@ -156,6 +156,21 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
             await simulations_collection.update_one({"id": session_id}, {"$set": update})
         return await simulations_collection.find_one({"id": session_id}, {"_id": 0})
 
+    @app.delete("/trainium/admin/sessions/{session_id}")
+    async def delete_session(session_id: str, user: User = Depends(get_current_admin)):
+        """Remove a session and invalidate its join link.
+
+        The transcript and events stay: they are the record of a session that
+        actually happened, and deleting the setup should not erase what a
+        trainer did.
+        """
+        result = await simulations_collection.delete_one(
+            {"id": session_id, "org_id": user.org_id}
+        )
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"deleted": session_id}
+
     @app.post("/trainium/admin/sessions/{session_id}/publish")
     async def publish_session(session_id: str, user: User = Depends(get_current_admin)):
         simulation = await simulations_collection.find_one(
