@@ -31,6 +31,28 @@ function slideSrc(fileId: string): string {
   return `${process.env.NEXT_PUBLIC_API_URL}/trainium/assets/${fileId}`;
 }
 
+// The four things that change how a trainer behaves in the room. Each leads
+// with what to do, because a heading the trainer can act on is worth more than
+// a description of the system.
+const BRIEFING = [
+  {
+    heading: "Just teach. They join in on their own.",
+    body: "The learners decide when to speak. You never pick who talks, though you can call on anyone whose hand goes up.",
+  },
+  {
+    heading: "Say “let me explain first” to hold questions",
+    body: "That quiets the room until you say “any questions?”. There is also a Hold questions button on the control bar.",
+  },
+  {
+    heading: "Share your screen so they can see it",
+    body: "They read what you present and ask about what is actually on it, so questions follow your slides.",
+  },
+  {
+    heading: "Everything is recorded and scored",
+    body: "You get a report afterwards where every score cites the moment in the transcript it came from.",
+  },
+];
+
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
@@ -162,7 +184,7 @@ export function GreenRoom({
   const ready = cameraOn || micOn;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[88rem]">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-xs tracking-wide text-indigo-700">
@@ -181,7 +203,11 @@ export function GreenRoom({
         </Button>
       </div>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[22rem_1fr]">
+      {/* Three columns, each a thing the trainer checks before going live:
+          their own kit, the deck they will teach, the room they will face.
+          The deck takes the middle and the most width because it is what they
+          actually spend the time on. */}
+      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[19rem_minmax(0,1fr)_20rem]">
         {/* Kit check first: a dead mic is the one failure that wastes the
             whole session, and it is invisible until someone does not respond. */}
         <section>
@@ -257,58 +283,34 @@ export function GreenRoom({
             </p>
           )}
 
-          <div className="mt-5 rounded-lg border bg-muted/40 p-4">
-            <h3 className="text-sm font-medium">How this runs</h3>
-            <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
-              <li>
-                The learners listen and speak on their own. You do not call on them
-                unless a hand goes up.
-              </li>
-              <li>
-                Say &quot;let me explain first&quot; to hold their questions, and
-                &quot;any questions?&quot; to open the floor again.
-              </li>
-              <li>
-                Share your screen so they can see and react to what you are showing.
-              </li>
-              <li>The session is recorded and scored afterwards against the rubric.</li>
-            </ul>
+          {/* Sits under the camera because that is where the trainer is
+              already looking while they test the mic, which is the one moment
+              they are idle enough to read. Numbered, not bulleted: these are
+              four distinct things to know, and a number invites reading each
+              one rather than skimming a list. */}
+          <div className="mt-5 rounded-lg border bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold">How this runs</h3>
+            <ol className="mt-3 space-y-3">
+              {BRIEFING.map((item, i) => (
+                <li key={item.heading} className="flex gap-2.5">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 font-mono text-[10px] text-white">
+                    {i + 1}
+                  </span>
+                  <div>
+                    <p className="text-xs font-medium leading-snug">{item.heading}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                      {item.body}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </div>
         </section>
 
-        <div className="space-y-5">
-          {/* Who is in the room, with their disposition, so the trainer knows
-              what kind of pushback to expect from whom. */}
-          <section>
-            <h2 className="text-sm font-medium">
-              Who is in the room ({personas.length})
-            </h2>
-            {audience && (
-              <p className="mt-1 text-xs text-muted-foreground">{audience}</p>
-            )}
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              {personas.map((p) => (
-                <div key={p.id} className="flex gap-3 rounded-lg border p-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white">
-                    {initials(p.name)}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">{p.name}</p>
-                    <p className="font-mono text-[11px] text-muted-foreground">
-                      {p.type.replace(/_/g, " ")}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                      {p.profile}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* The actual deck. Reading it here is the preparation, so it is
-              browsable rather than a count. */}
-          <section>
+        {/* The deck takes the middle: reading through it is the actual
+            preparation, so it gets the space and the centre of attention. */}
+        <section>
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm font-medium">
                 Your material {slides.length > 0 && `(${slides.length} slides)`}
@@ -335,7 +337,7 @@ export function GreenRoom({
                   <img
                     src={slideSrc(slide.image_file_id)}
                     alt={slide.title || `Slide ${slide.slide_number}`}
-                    className="max-h-[22rem] w-full object-contain"
+                    className="max-h-[26rem] w-full object-contain"
                   />
                   <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-white backdrop-blur">
                     <button
@@ -390,8 +392,37 @@ export function GreenRoom({
                 </div>
               </>
             )}
-          </section>
-        </div>
+        </section>
+
+        {/* Who is in the room, with their disposition, so the trainer knows
+            what kind of pushback to expect from whom. Scrolls in place: a
+            class of twenty must not push the page down. */}
+        <section className="flex max-h-[38rem] flex-col">
+          <h2 className="text-sm font-medium">
+            Who is in the room ({personas.length})
+          </h2>
+          {audience && (
+            <p className="mt-1 text-xs text-muted-foreground">{audience}</p>
+          )}
+          <div className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+            {personas.map((p) => (
+              <div key={p.id} className="flex gap-3 rounded-lg border p-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white">
+                  {initials(p.name)}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{p.name}</p>
+                  <p className="font-mono text-[11px] text-muted-foreground">
+                    {p.type.replace(/_/g, " ")}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {p.profile}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
 
       {!ready && !deviceError && (
