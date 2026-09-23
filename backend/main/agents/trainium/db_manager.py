@@ -314,6 +314,77 @@ async def ensure_indexes() -> None:
     await analysis_jobs_collection.create_index([("status", 1), ("updated_at", 1)])
 
 
+
+# Delivery competencies, scored only from the trainer's camera track. Kept as a
+# separate rubric rather than added to the default one: a session recorded with
+# the camera off should score the seven spoken competencies normally, not take
+# zeros on criteria it never had the chance to demonstrate.
+#
+# Anchors describe what is visible at 1 frame per second, which is how Gemini
+# samples video by default. Micro-expressions are deliberately absent: they are
+# not reliably observable at that rate, and scoring them would be inventing
+# detail the model cannot actually see.
+VIDEO_RUBRIC_SEED = {
+    "id": "rubric_delivery_v1",
+    "org_id": None,
+    "name": "Delivery and Presence",
+    "description": (
+        "How the trainer comes across on camera. Scored from the recording, so it "
+        "only applies to sessions where the camera was on."
+    ),
+    "status": "published",
+    "version": 1,
+    "created_by": None,
+    "competencies": [
+        {
+            "key": "eye_contact",
+            "label": "Eye Contact",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Looks away from camera almost throughout, mostly reading.",
+                "3": "Looks at camera intermittently but returns often to notes or slides.",
+                "5": "Holds camera consistently, glancing away only briefly to reference material.",
+            },
+        },
+        {
+            "key": "posture_presence",
+            "label": "Posture and Presence",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Slumped or drifting out of frame, low physical energy.",
+                "3": "Steady and centred but static, with little variation.",
+                "5": "Upright, well framed, with energy that suits the material.",
+            },
+        },
+        {
+            "key": "gesture_use",
+            "label": "Gesture",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Hands out of frame or still throughout.",
+                "3": "Occasional gestures, not clearly tied to what is being said.",
+                "5": "Gestures illustrate the point being made, used purposefully.",
+            },
+        },
+        {
+            "key": "expression_warmth",
+            "label": "Facial Expression",
+            "scale_min": 1,
+            "scale_max": 5,
+            "anchors": {
+                "1": "Flat throughout, no visible reaction to learners.",
+                "3": "Some expression, though it rarely changes with the content.",
+                "5": "Expression shifts with the material and responds visibly to learners.",
+            },
+        },
+    ],
+    "schema_version": 1,
+}
+
+
 async def seed_reference_data() -> None:
     # System templates (org_id None) are refreshed rather than inserted once, so
     # edits to the seed reach databases that already ran an older version. Only
@@ -329,4 +400,7 @@ async def seed_reference_data() -> None:
         )
     await rubrics_collection.update_one(
         {"id": DEFAULT_RUBRIC_SEED["id"]}, {"$setOnInsert": DEFAULT_RUBRIC_SEED}, upsert=True
+    )
+    await rubrics_collection.update_one(
+        {"id": VIDEO_RUBRIC_SEED["id"]}, {"$set": VIDEO_RUBRIC_SEED}, upsert=True
     )

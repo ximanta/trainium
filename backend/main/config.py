@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     gemini_model_flash: str = "gemini-3.8-flash"
     gemini_model_flash_lite: str = "gemini-3.5-flash-lite"
     gemini_model_tts: str = "gemini-3.1-flash-tts-preview"
+    # Analysis runs after the session, so it is not on the latency path and
+    # can afford the stronger model. Scoring against rubric anchors needs
+    # better reasoning than the Director's quick in-character lines.
+    gemini_model_analysis: str = "gemini-3.8-flash"
 
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""

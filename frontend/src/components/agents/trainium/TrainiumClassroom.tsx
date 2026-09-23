@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+
+import { api } from "@/api/axios";
 import { MicVAD } from "@ricky0123/vad-web";
 import {
   ChevronLeft,
@@ -64,6 +67,21 @@ function initials(name: string): string {
 function formatClock(seconds: number): string {
   const s = Math.max(0, seconds);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// Codec preference, most to least wanted. Chrome and Edge take VP9, Firefox
+// VP8, Safari only MP4. All are formats the Gemini File API accepts, so
+// whichever wins here still analyses.
+const RECORDING_TYPES = [
+  "video/webm;codecs=vp9",
+  "video/webm;codecs=vp8",
+  "video/webm",
+  "video/mp4",
+];
+
+function pickRecordingType(): string | undefined {
+  if (typeof MediaRecorder === "undefined") return undefined;
+  return RECORDING_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
 }
 
 function slideSrc(fileId: string): string {
@@ -198,6 +216,7 @@ export function TrainiumClassroom({
   const [remainingS, setRemainingS] = useState<number | null>(null);
   const [nudge, setNudge] = useState<number | null>(null);
   const [endedReason, setEndedReason] = useState<string | null>(null);
+  const [reportReady, setReportReady] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -214,6 +233,13 @@ export function TrainiumClassroom({
   // names synchronously without waiting on batched state updates.
   const nameByIdRef = useRef<Record<string, string>>({});
   const lastFrameRef = useRef<string | null>(null);
+  // Camera track recorder. Chunks accumulate in memory and upload once at the
+  // end: a 30-minute WebM is tens of megabytes, which is far cheaper to send
+  // as one request than to stream and reassemble server-side.
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordStartRef = useRef<number>(0);
+  const uploadedRef = useRef(false);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   // The line the Director generated, held back until the first audio chunk
   // plays. Without this the text appears while the room is still silent, which
@@ -292,6 +318,9 @@ export function TrainiumClassroom({
       cameraStreamRef.current = camStream;
       if (cameraVideoRef.current) cameraVideoRef.current.srcObject = camStream;
       setCameraOn(true);
+      // Recording starts with the camera, so the whole session is captured
+      // rather than whatever remained after the trainer thought to press it.
+      startRecording(camStream);
     } catch {
       setCameraOn(false);
     }
@@ -405,6 +434,9 @@ export function TrainiumClassroom({
         case "session_ended":
           setEndedReason(String(msg.data.reason ?? "time"));
           setStatus("Session ended");
+          // The timer ended it rather than the trainer, so the upload and the
+          // report are kicked off here instead of from leave().
+          void finishRecording();
           break;
         case "persona_muted":
           updateParticipant(msg.data.persona_id, { muted: msg.data.muted });
@@ -568,13 +600,82 @@ export function TrainiumClassroom({
     }
   }
 
+  function startRecording(stream: MediaStream) {
+    const mimeType = pickRecordingType();
+    if (!mimeType) return;
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      // One second slices, so a crash loses at most a second rather than the
+      // whole session.
+      recorder.start(1000);
+      recorderRef.current = recorder;
+      recordStartRef.current = Date.now();
+    } catch {
+      // Recording is not worth failing a session over: the transcript half of
+      // the report works without it.
+    }
+  }
+
+  /** Stop recording, upload the camera track, then ask for the report.
+   *
+   *  Analysis is requested only after the upload lands, so the video pass has
+   *  something to watch. Guarded against running twice, since a session can
+   *  end by timer and by the trainer leaving almost at once.
+   */
+  async function finishRecording() {
+    if (uploadedRef.current) return;
+    uploadedRef.current = true;
+
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      await new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve();
+        recorder.stop();
+      });
+    }
+    recorderRef.current = null;
+
+    const chunks = chunksRef.current;
+    chunksRef.current = [];
+
+    if (chunks.length) {
+      setStatus("Saving recording...");
+      try {
+        const blob = new Blob(chunks, { type: chunks[0].type });
+        const form = new FormData();
+        form.append("file", blob, "camera.webm");
+        form.append(
+          "duration_s",
+          String((Date.now() - recordStartRef.current) / 1000)
+        );
+        await api.post(`/trainium/sessions/${simulationId}/recording`, form);
+      } catch {
+        // An upload failure costs the delivery section, not the report.
+      }
+    }
+
+    setStatus("Preparing your report...");
+    try {
+      await api.post(`/trainium/sessions/${simulationId}/analyse`);
+    } catch {
+      setStatus("Session ended");
+      return;
+    }
+    setReportReady(true);
+    setStatus("Report ready");
+  }
+
   function leave() {
     vadRef.current?.destroy();
     wsRef.current?.close();
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    void finishRecording().finally(() => {
+      cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
+    });
     setJoined(false);
-    setStatus("Left the session");
   }
 
   const raisedHands = participants.filter((p) => p.handRaised);
@@ -711,9 +812,17 @@ export function TrainiumClassroom({
               <div className="px-8 text-center">
                 <p className="text-lg font-medium text-white">Session complete</p>
                 <p className="mt-2 text-sm text-slate-300">
-                  The time allotted for this session is up. Your transcript has been
-                  saved.
+                  {reportReady
+                    ? "Your report is being prepared. It takes a minute or two."
+                    : "Saving your recording..."}
                 </p>
+                {reportReady && (
+                  <Button asChild variant="outline" size="sm" className="mt-4">
+                    <Link href={`/trainium/report/${simulationId}`}>
+                      View report
+                    </Link>
+                  </Button>
+                )}
               </div>
             </div>
           )}

@@ -139,6 +139,11 @@ export function SessionList() {
                 <span className="ml-1.5">{copiedId === s.id ? "Copied" : "Link"}</span>
               </Button>
             )}
+            {s.status === "complete" && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/trainium/report/${s.id}`}>Report</Link>
+              </Button>
+            )}
             <Button asChild variant="outline" size="sm">
               <Link href={`/trainium/admin/${s.id}`}>Edit</Link>
             </Button>

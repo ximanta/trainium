@@ -225,3 +225,72 @@ class Simulation(BaseModel):
     audience: str = ""
     schema_version: int = 1
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class Recording(BaseModel):
+    """The trainer's camera track for one session.
+
+    Camera only, deliberately: body language lives there, while what was on
+    screen is already recoverable from the slide number on each transcript
+    segment. Keeping one track also means WebM goes from MediaRecorder to
+    GridFS to Gemini untouched, with no compositing step to install or fail.
+    """
+
+    id: str
+    simulation_id: str
+    track: Literal["camera"] = "camera"
+    file_id: str
+    content_type: str = "video/webm"
+    size_bytes: int = 0
+    duration_s: float = 0.0
+    schema_version: int = 1
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class Evidence(BaseModel):
+    """One observed moment, tied to the competency it speaks to.
+
+    Extracted before any score exists. Scoring then reads only these, which
+    is what makes a score traceable rather than a number with quotes found to
+    justify it afterwards.
+    """
+
+    competency_key: str
+    quote: str
+    # Seconds from session start, so the report can point at the moment.
+    ts_start: float
+    ts_end: float
+    speaker: str = "trainer"
+    # Whether this came from the transcript or from watching the video.
+    source: Literal["transcript", "video"] = "transcript"
+    # True when the moment shows the competency done well.
+    positive: bool = True
+
+
+class CompetencyScore(BaseModel):
+    competency_key: str
+    label: str
+    score: int = Field(ge=1, le=5)
+    rationale: str
+    evidence: list[Evidence] = Field(default_factory=list)
+
+
+class Report(BaseModel):
+    id: str
+    simulation_id: str
+    rubric_id: str
+    # Transcript and video competencies are scored and shown apart, so a
+    # session recorded with the camera off is not penalised on delivery
+    # criteria it never had a chance to demonstrate.
+    scores: list[CompetencyScore] = Field(default_factory=list)
+    video_scores: list[CompetencyScore] = Field(default_factory=list)
+    summary: str = ""
+    strengths: list[str] = Field(default_factory=list)
+    improvements: list[str] = Field(default_factory=list)
+    # False when no usable camera track existed, so the UI can say why the
+    # delivery section is missing instead of showing an empty panel.
+    video_analysed: bool = False
+    status: Literal["pending", "running", "complete", "failed"] = "pending"
+    error: str = ""
+    schema_version: int = 1
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
