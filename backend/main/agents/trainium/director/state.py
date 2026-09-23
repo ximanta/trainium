@@ -41,6 +41,10 @@ class SessionState:
     # runs can see what is being said right now, not just prior turns.
     in_progress_partial: str = ""
     slide_number: int | None = None
+    # Latest frame of the trainer's shared screen as JPEG bytes, or None when
+    # not sharing. The client only sends a new frame when the screen actually
+    # changed, so this is refreshed rarely rather than every turn.
+    screen_frame_jpeg: bytes | None = None
     persona_states: dict[str, PersonaState] = field(default_factory=dict)
     recent_events: list[dict] = field(default_factory=list)
     intervention_count_window: list[float] = field(default_factory=list)  # elapsed_s timestamps, last 10min

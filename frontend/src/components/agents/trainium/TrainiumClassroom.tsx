@@ -103,6 +103,8 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const isPlayingRef = useRef(false);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastFrameRef = useRef<string | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -235,6 +237,35 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
     ws.onerror = () => setStatus("Connection error");
   }
 
+  // Grab the shared screen as a small JPEG. Downscaled to 1024px wide at
+  // quality 0.6, which lands around 10KB and costs no measurable latency in
+  // the Director call, while staying legible enough to read slide text.
+  function captureScreenFrame(): string | null {
+    const video = screenVideoRef.current;
+    if (!video || !video.videoWidth) return null;
+
+    const width = 1024;
+    const height = Math.round((video.videoHeight / video.videoWidth) * width);
+    const canvas = frameCanvasRef.current ?? document.createElement("canvas");
+    frameCanvasRef.current = canvas;
+    canvas.width = width;
+    canvas.height = height;
+    const ctx2d = canvas.getContext("2d");
+    if (!ctx2d) return null;
+    ctx2d.drawImage(video, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
+  }
+
+  function sendScreenFrameIfChanged(ws: WebSocket) {
+    const b64 = captureScreenFrame();
+    if (!b64) return;
+    // Only resend when the screen actually changed. Re-sending an identical
+    // frame every turn would burn tokens for no new information.
+    if (b64 === lastFrameRef.current) return;
+    lastFrameRef.current = b64;
+    ws.send(JSON.stringify({ type: "screen_frame", data: { b64 } }));
+  }
+
   async function startVAD(ws: WebSocket, micStream: MediaStream, ctx: AudioContext) {
     const source = ctx.createMediaStreamSource(micStream);
     const processor = ctx.createScriptProcessor(4096, 1, 1);
@@ -255,6 +286,9 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
       onSpeechStart: () => {
         speaking = true;
         setStatus("You are speaking");
+        // Capture what is on screen as the turn begins, so the Director sees
+        // the slide or demo the trainer is actually talking over.
+        sendScreenFrameIfChanged(ws);
         ws.send(JSON.stringify({ type: "activity_start" }));
       },
       onSpeechEnd: () => {
@@ -282,12 +316,17 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
     }
   }
 
+  function stopSharing() {
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+    lastFrameRef.current = null;
+    setScreenSharing(false);
+    send("screen_share", { on: false });
+  }
+
   async function toggleScreenShare() {
     if (screenSharing) {
-      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current = null;
-      setScreenSharing(false);
-      send("screen_share", { on: false });
+      stopSharing();
       return;
     }
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -295,10 +334,7 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
     if (screenVideoRef.current) screenVideoRef.current.srcObject = stream;
     // The browser's own "stop sharing" control bypasses our button, so listen
     // for the track ending too or the UI would show sharing forever.
-    stream.getVideoTracks()[0].addEventListener("ended", () => {
-      setScreenSharing(false);
-      send("screen_share", { on: false });
-    });
+    stream.getVideoTracks()[0].addEventListener("ended", stopSharing);
     setScreenSharing(true);
     send("screen_share", { on: true });
   }

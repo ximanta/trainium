@@ -10,6 +10,7 @@ Director. This is the real multi-persona, Director-driven loop.
 """
 
 import asyncio
+import base64
 import json
 import time
 import uuid
@@ -100,8 +101,6 @@ async def _stream_persona_tts(
             continue
         for part in chunk.candidates[0].content.parts:
             if part.inline_data:
-                import base64
-
                 await _ws_send_json(
                     websocket,
                     {
@@ -375,6 +374,15 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                 )
                             elif control_type == "slide_change":
                                 state.slide_number = control.get("data", {}).get("slide")
+                            elif control_type == "screen_share":
+                                if not control.get("data", {}).get("on"):
+                                    # Sharing stopped, drop the stale frame so
+                                    # personas do not keep referring to a
+                                    # screen that is no longer up.
+                                    state.screen_frame_jpeg = None
+                            elif control_type == "screen_frame":
+                                b64 = control.get("data", {}).get("b64", "")
+                                state.screen_frame_jpeg = base64.b64decode(b64) if b64 else None
                             elif control_type == "barge_in":
                                 if tts_task is not None and not tts_task.done():
                                     tts_task.cancel()

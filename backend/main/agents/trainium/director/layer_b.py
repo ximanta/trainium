@@ -40,6 +40,8 @@ Eligible personas (not on cooldown):
 
 Recent classroom events: {recent_events}
 
+Screen: {screen_status}
+
 Decide: should a persona speak, react non-verbally, or stay silent this turn?
 If speak, pick exactly one eligible persona and write their exact spoken line, \
 in character for their type and current emotional state. The line must be \
@@ -114,11 +116,28 @@ async def decide_and_speak(
         in_progress_partial=state.in_progress_partial or "(nothing yet)",
         persona_digest=_format_persona_digest(eligible_personas, state.elapsed_s),
         recent_events=state.recent_events,
+        screen_status=(
+            "the trainer is sharing their screen, an image of it is attached; "
+            "a learner may reasonably ask about what is visible on it"
+            if state.screen_frame_jpeg
+            else "the trainer is not sharing their screen"
+        ),
     )
+
+    # The trainer's shared screen, if any. Measured at ~10KB for a downscaled
+    # JPEG and no meaningful latency cost, so personas can react to what is
+    # actually on screen (live demos, code, anything not in the Teaching
+    # Graph). Diverges from architecture doc §4, which only sends video to
+    # Gemini post-session.
+    contents: list = [prompt]
+    if state.screen_frame_jpeg:
+        contents.append(
+            types.Part.from_bytes(data=state.screen_frame_jpeg, mime_type="image/jpeg")
+        )
 
     response = client.models.generate_content(
         model=settings.gemini_model_flash_lite,
-        contents=prompt,
+        contents=contents,
         config=types.GenerateContentConfig(
             temperature=0.4,
             max_output_tokens=200,
