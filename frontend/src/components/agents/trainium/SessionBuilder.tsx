@@ -5,6 +5,7 @@ import { Check, Copy, Link2 } from "lucide-react";
 
 import { api } from "@/api/axios";
 import { Button } from "@/components/ui/button";
+import { DeckUpload } from "@/components/agents/trainium/DeckUpload";
 
 type PersonaTemplate = {
   id: string;
@@ -171,7 +172,7 @@ export function SessionBuilder() {
             className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
           />
         </label>
-        <label className="block">
+        <div>
           <span className="text-sm font-medium">Teaching material</span>
           <select
             value={courseId}
@@ -185,7 +186,18 @@ export function SessionBuilder() {
               </option>
             ))}
           </select>
-        </label>
+          <div className="mt-2">
+            <DeckUpload
+              onUploaded={(course) => {
+                setCourses((prev) => [
+                  { id: course.id, title: course.title, status: course.status },
+                  ...prev.filter((c) => c.id !== course.id),
+                ]);
+                setCourseId(course.id);
+              }}
+            />
+          </div>
+        </div>
       </div>
 
       <div>
