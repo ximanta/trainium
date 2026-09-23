@@ -1,17 +1,21 @@
-import { PersonaList } from "@/components/agents/trainium/PersonaList";
+import Link from "next/link";
 
 export default function TrainiumAppPage() {
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
-      <h1 className="text-2xl font-semibold">Your sessions</h1>
-      <p className="mt-2 text-muted-foreground">
-        Log in, join a session, and view your report here. This route is reserved for
-        the trainer role.
+    <main className="mx-auto max-w-2xl px-6 py-20 text-center">
+      <h1 className="text-2xl font-semibold">Join a session from your link</h1>
+      <p className="mt-3 text-sm text-muted-foreground">
+        Sessions are set up by an admin, who picks the teaching material and the
+        learners in the room. Open the link they sent you and you will land straight in
+        the classroom, with everything already configured.
       </p>
-      <h2 className="mt-10 text-lg font-medium">Available personas</h2>
-      <div className="mt-4">
-        <PersonaList />
-      </div>
+      <p className="mt-6 text-sm text-muted-foreground">
+        Setting sessions up yourself?{" "}
+        <Link href="/trainium/admin" className="font-medium underline">
+          Go to the admin console
+        </Link>
+        .
+      </p>
     </main>
   );
 }
