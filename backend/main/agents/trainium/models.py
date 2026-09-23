@@ -136,6 +136,18 @@ class Event(BaseModel):
     payload: dict = Field(default_factory=dict)
 
 
+class PersonaOverride(BaseModel):
+    """Per-session tweaks to a persona template. Every field is optional; only
+    what the admin actually changed is stored, so template edits still flow
+    through for everything else.
+    """
+
+    display_name: Optional[str] = None
+    profile: Optional[str] = None
+    voice_id: Optional[str] = None
+    speak_probability: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+
 class Simulation(BaseModel):
     id: str
     org_id: str
@@ -158,5 +170,14 @@ class Simulation(BaseModel):
     # changing real classroom behaviour.
     min_gap_s: Optional[float] = None
     per_persona_cooldown_s: Optional[float] = None
+    # Per-session persona overrides, keyed by persona template id. Lets an
+    # admin rename or retune a learner for one session without creating a new
+    # template. Only the keys present are overridden.
+    persona_overrides: dict[str, "PersonaOverride"] = Field(default_factory=dict)
+    # Unguessable token the trainer's join link carries. The simulation id
+    # identifies the session; this grants access to it, so they are kept
+    # separate rather than overloading the id.
+    join_token: Optional[str] = None
+    title: str = ""
     schema_version: int = 1
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

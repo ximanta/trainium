@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from main.agents.trainium.db_manager import ensure_indexes, seed_reference_data
+from main.agents.trainium.routes_admin_sessions import configure_routes_admin_sessions
 from main.agents.trainium.routes_simulations import configure_routes_simulations
 from main.agents.trainium.routes_trainium import configure_routes_trainium
 from main.agents.trainium.spike.voice_loop import configure_routes_voice_spike
@@ -30,6 +31,7 @@ app.add_middleware(
 
 configure_routes_trainium(app)
 configure_routes_simulations(app)
+configure_routes_admin_sessions(app)
 configure_routes_ws_session(app)
 configure_routes_voice_spike(app)
 

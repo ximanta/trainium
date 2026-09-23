@@ -19,7 +19,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google import genai
 from google.genai import types
 
-from main.agents.trainium.db_manager import persona_templates_collection, simulations_collection
+from main.agents.trainium.db_manager import (
+    courses_collection,
+    persona_templates_collection,
+    simulations_collection,
+)
 from main.agents.trainium.director.layer_b import DirectorDecision
 from main.agents.trainium.director.persistence import append_event, append_transcript_segment
 from main.agents.trainium.director.policy import DirectorPolicy
@@ -39,21 +43,29 @@ async def _ws_send_json(websocket: WebSocket, payload: dict) -> None:
     await websocket.send_json(payload)
 
 
-async def _load_session_personas(persona_ids: list[str]) -> dict[str, PersonaState]:
+async def _load_session_personas(
+    persona_ids: list[str], overrides: dict | None = None
+) -> dict[str, PersonaState]:
+    """Persona templates with any per-session admin overrides applied."""
+    overrides = overrides or {}
     cursor = persona_templates_collection.find({"id": {"$in": persona_ids}})
     templates = await cursor.to_list(length=None)
-    return {
-        t["id"]: PersonaState(
+
+    states = {}
+    for t in templates:
+        override = overrides.get(t["id"]) or {}
+        states[t["id"]] = PersonaState(
             persona_id=t["id"],
             persona_type=t["type"],
-            voice_id=t["voice_id"],
-            display_name=t.get("name", t["id"]),
+            voice_id=override.get("voice_id") or t["voice_id"],
+            display_name=override.get("display_name") or t.get("name", t["id"]),
+            profile=override.get("profile") or t.get("profile", ""),
+            speak_probability=override.get("speak_probability"),
             # Only a real configured portrait. With none, the client shows a
             # camera-off initials tile, as Teams and Zoom do.
             avatar_url=t.get("avatar_url") or "",
         )
-        for t in templates
-    }
+    return states
 
 
 async def _stream_persona_tts(
@@ -146,10 +158,30 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             return
 
         state = create_session(simulation_id)
-        state.persona_states = await _load_session_personas(simulation.get("persona_ids", []))
+        state.persona_states = await _load_session_personas(
+            simulation.get("persona_ids", []), simulation.get("persona_overrides", {})
+        )
         state.current_objective_id = (
             simulation.get("target_objective_ids") or [None]
         )[0]
+
+        # Slide images were rendered to GridFS during course ingestion (M1);
+        # the client fetches each by id from /trainium/assets/{file_id}.
+        slides: list[dict] = []
+        if simulation.get("course_id"):
+            course = await courses_collection.find_one(
+                {"id": simulation["course_id"]}, {"_id": 0, "slides": 1}
+            )
+            if course:
+                slides = [
+                    {
+                        "slide_number": s["slide_number"],
+                        "title": s.get("title", ""),
+                        "image_file_id": s.get("image_file_id"),
+                    }
+                    for s in course.get("slides", [])
+                    if s.get("image_file_id")
+                ]
 
         policy_overrides = {
             key: simulation[key]
@@ -327,7 +359,8 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                     "muted": p.muted,
                                 }
                                 for p in state.persona_states.values()
-                            ]
+                            ],
+                            "slides": slides,
                         },
                     },
                 )

@@ -82,7 +82,9 @@ class DirectorPolicy:
         # chance that *someone* speaks; otherwise a fully muted classroom
         # still opens the gate and then finds nobody eligible.
         probs = [
-            self.speak_probability_by_type.get(p.persona_type, 0.15)
+            p.speak_probability
+            if p.speak_probability is not None
+            else self.speak_probability_by_type.get(p.persona_type, 0.15)
             for p in state.persona_states.values()
             if not p.muted
         ]
