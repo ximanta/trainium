@@ -2,7 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MicVAD } from "@ricky0123/vad-web";
-import { Hand, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Hand,
+  Mic,
+  MicOff,
+  MonitorUp,
+  PhoneOff,
+  Video,
+  VideoOff,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -19,6 +29,12 @@ type Participant = {
 type TranscriptLine = {
   speaker: string;
   text: string;
+};
+
+type Slide = {
+  slide_number: number;
+  title: string;
+  image_file_id: string;
 };
 
 const CHUNK_FRAMES = 1600; // ~100ms at 16kHz, the chunk size Gemini expects
@@ -146,6 +162,8 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const [screenSharing, setScreenSharing] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [selfMuted, setSelfMuted] = useState(false);
+  const [slides, setSlides] = useState<Slide[]>([]);
+  const [slideIndex, setSlideIndex] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -257,6 +275,7 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
             roster.map((p) => [p.personaId, p.displayName])
           );
           setParticipants(roster);
+          setSlides((msg.data.slides as Slide[]) ?? []);
           break;
         }
         case "ready":
@@ -441,6 +460,15 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
 
   const raisedHands = participants.filter((p) => p.handRaised);
   const speakingNow = participants.find((p) => p.speaking);
+  const currentSlide = slides[slideIndex];
+
+  function goToSlide(index: number) {
+    if (index < 0 || index >= slides.length) return;
+    setSlideIndex(index);
+    // Tell the Director which slide is up, so personas can ask about the
+    // material actually on screen.
+    send("slide_change", { slide: slides[index].slide_number });
+  }
 
   return (
     <div className="flex h-[calc(100vh-7rem)] gap-3">
@@ -455,15 +483,50 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
             playsInline
             className={screenSharing ? "h-full w-full object-contain" : "hidden"}
           />
-          {!screenSharing && (
+          {/* Screen share wins the stage when active; otherwise the session's
+              slides, if the admin configured teaching material. */}
+          {!screenSharing && currentSlide && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`${process.env.NEXT_PUBLIC_API_URL}/trainium/assets/${currentSlide.image_file_id}`}
+              alt={currentSlide.title || `Slide ${currentSlide.slide_number}`}
+              className="h-full w-full object-contain"
+            />
+          )}
+
+          {!screenSharing && !currentSlide && (
             <div className="px-6 text-center">
               <p className="text-sm text-slate-300">
                 Nothing is being presented
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                Share your screen to present. Course slides will appear here once
-                the session is configured with teaching material.
+                Share your screen to present, or ask your admin to attach teaching
+                material to this session.
               </p>
+            </div>
+          )}
+
+          {!screenSharing && slides.length > 0 && (
+            <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-white backdrop-blur">
+              <button
+                onClick={() => goToSlide(slideIndex - 1)}
+                disabled={slideIndex === 0}
+                className="rounded p-1 hover:bg-white/10 disabled:opacity-30"
+                aria-label="Previous slide"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="px-1 text-xs tabular-nums">
+                {slideIndex + 1} / {slides.length}
+              </span>
+              <button
+                onClick={() => goToSlide(slideIndex + 1)}
+                disabled={slideIndex >= slides.length - 1}
+                className="rounded p-1 hover:bg-white/10 disabled:opacity-30"
+                aria-label="Next slide"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
           )}
 
