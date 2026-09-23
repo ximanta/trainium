@@ -43,12 +43,15 @@ Recent classroom events: {recent_events}
 Screen: {screen_status}
 
 Decide: should a persona speak, react non-verbally, or stay silent this turn?
-If speak, pick exactly one eligible persona and write their exact spoken line, \
-in character for their type and current emotional state. The line must be \
-short (1-2 sentences), in a natural spoken register, no markdown, no lists, \
-no meta-commentary about being an AI. Do not ask about objectives not yet \
-covered. Set urgency 1-5 based on how much this needs the trainer's attention \
-now versus could wait.
+If speak, set persona_id to that persona's id exactly as listed above, and \
+write their exact spoken line, in character for their type and current \
+emotional state. The line must be short (1-2 sentences), in a natural spoken \
+register, no markdown, no lists, no meta-commentary about being an AI. Do not \
+ask about objectives not yet covered. Set urgency 1-5 based on how much this \
+needs the trainer's attention now versus could wait.
+
+If the persona introduces themselves or is asked who is speaking, they must \
+use the name given for them above. Never invent a different name.
 
 Never repeat a point another learner already made. If someone has already \
 confirmed they can hear the trainer, or already answered the trainer's \
@@ -79,7 +82,8 @@ def _format_persona_digest(personas: dict[str, PersonaState], elapsed_s: float) 
         else:
             recency = f"last spoke {elapsed_s - p.last_spoke_at:.0f}s ago"
         lines.append(
-            f"- {p.persona_id} ({p.persona_type}): {recency}, "
+            f"- id={p.persona_id}, name={p.display_name or p.persona_id} "
+            f"({p.persona_type}): {recency}, "
             f"engagement={p.engagement:.2f}, confusion={p.confusion:.2f}, "
             f"knowledge_gaps={p.knowledge_gaps}"
         )

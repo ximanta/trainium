@@ -153,6 +153,9 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Persona id to display name, kept in a ref so message handlers can resolve
+  // names synchronously without waiting on batched state updates.
+  const nameByIdRef = useRef<Record<string, string>>({});
   const lastFrameRef = useRef<string | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -234,9 +237,9 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
       const msg = JSON.parse(event.data);
 
       switch (msg.type) {
-        case "roster":
-          setParticipants(
-            msg.data.personas.map((p: Record<string, unknown>) => ({
+        case "roster": {
+          const roster: Participant[] = msg.data.personas.map(
+            (p: Record<string, unknown>) => ({
               personaId: p.persona_id as string,
               displayName: (p.display_name as string) || (p.persona_id as string),
               personaType: p.persona_type as string,
@@ -244,9 +247,14 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
               muted: Boolean(p.muted),
               speaking: false,
               handRaised: false,
-            }))
+            })
           );
+          nameByIdRef.current = Object.fromEntries(
+            roster.map((p) => [p.personaId, p.displayName])
+          );
+          setParticipants(roster);
           break;
+        }
         case "ready":
           setJoined(true);
           setStatus("Listening");
@@ -259,19 +267,13 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
           updateParticipant(msg.data.persona_id, { handRaised: true });
           break;
         case "persona_speaking": {
-          // Resolve the display name from the roster inside the setter so we
-          // read current state rather than a value captured when the socket
-          // handler was created.
-          let speakerName = msg.data.persona_id as string;
-          setParticipants((prev) => {
-            const match = prev.find((p) => p.personaId === msg.data.persona_id);
-            if (match) speakerName = match.displayName;
-            return prev.map((p) =>
-              p.personaId === msg.data.persona_id
-                ? { ...p, speaking: true, handRaised: false }
-                : p
-            );
-          });
+          // Read the name from a ref, not from state: React batches updates,
+          // so a name captured inside a setState updater is not available to
+          // the next line, which is what previously left raw ids in the
+          // transcript.
+          const speakerName =
+            nameByIdRef.current[msg.data.persona_id] ?? (msg.data.persona_id as string);
+          updateParticipant(msg.data.persona_id, { speaking: true, handRaised: false });
           setTranscript((prev) => [...prev, { speaker: speakerName, text: msg.data.text }]);
           break;
         }
