@@ -161,6 +161,9 @@ class PersonaOverride(BaseModel):
 # persona calling a female trainer "Sir".
 TrainerAddress = Literal["sir", "maam", "name"]
 
+# The same values as a runtime set, for validating what a client sends.
+TRAINER_ADDRESSES = frozenset(("sir", "maam", "name"))
+
 
 def describe_trainer(name: str, address: str) -> str:
     """One line telling the Director how personas should address the trainer."""
@@ -170,7 +173,13 @@ def describe_trainer(name: str, address: str) -> str:
     if address == "maam":
         return f"{name or 'The trainer'}, addressed as Ma'am." if name else "Addressed as Ma'am."
     if name:
-        return f"{name}, addressed by name as {name}, with no Sir or Ma'am."
+        # First name only: a learner saying "Yeah Sneha Patel" reads as a form
+        # letter, where "Sneha" is what a person would actually say.
+        first = name.split()[0]
+        return (
+            f"{name}, addressed by first name as {first}, with no Sir or Ma'am. "
+            f"Use the name sparingly, the way people do in speech, not in every line."
+        )
     # Nothing configured: no honorific is safer than guessing one.
     return "Name unknown. Address them directly without any honorific, never Sir or Ma'am."
 
@@ -179,8 +188,9 @@ class Simulation(BaseModel):
     id: str
     org_id: str
     trainer_id: str
-    # Who is teaching, so personas address them correctly. Set by the admin when
-    # the session is created; the trainer only opens the link.
+    # Who taught it, captured from the green room when the session starts. Not
+    # set by the admin: one join link is shared across many trainers, so only
+    # the person who opens it knows their own name and how to be addressed.
     trainer_name: str = ""
     trainer_address: TrainerAddress = "name"
     course_id: Optional[str] = None

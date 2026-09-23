@@ -24,7 +24,6 @@ type Course = {
   status: string;
 };
 
-type TrainerAddress = "sir" | "maam" | "name";
 
 const DEFAULT_SPEAK_PROBABILITY = 0.2;
 
@@ -49,8 +48,6 @@ export function SessionBuilder() {
   const [title, setTitle] = useState("");
   const [courseId, setCourseId] = useState("");
   const [audience, setAudience] = useState("");
-  const [trainerName, setTrainerName] = useState("");
-  const [trainerAddress, setTrainerAddress] = useState<TrainerAddress>("name");
   const [durationMin, setDurationMin] = useState(30);
   // Drafts hold the full editable state for everyone in the room, seeded from
   // the template. Presence in this map is what "in the room" means.
@@ -130,8 +127,6 @@ export function SessionBuilder() {
       const created = await api.post("/trainium/admin/sessions", {
         title: title || "Untitled session",
         audience,
-        trainer_name: trainerName,
-        trainer_address: trainerAddress,
         duration_min: durationMin,
         course_id: courseId || null,
         persona_ids: ids,
@@ -188,8 +183,6 @@ export function SessionBuilder() {
             setTitle("");
             setAudience("");
             setCourseId("");
-            setTrainerName("");
-            setTrainerAddress("name");
             setDurationMin(30);
           }}
         >
@@ -267,31 +260,6 @@ export function SessionBuilder() {
                 }}
               />
             </div>
-          </div>
-
-          <div>
-            <span className="text-sm font-medium">Who is the trainer?</span>
-            <input
-              value={trainerName}
-              onChange={(e) => setTrainerName(e.target.value)}
-              placeholder="e.g. Anjali Rao"
-              className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-              aria-label="Trainer name"
-            />
-            <select
-              value={trainerAddress}
-              onChange={(e) => setTrainerAddress(e.target.value as TrainerAddress)}
-              className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm"
-              aria-label="How learners address the trainer"
-            >
-              <option value="name">Address by name</option>
-              <option value="maam">Address as Ma&apos;am</option>
-              <option value="sir">Address as Sir</option>
-            </select>
-            <span className="mt-1 block text-xs text-muted-foreground">
-              Learners use this when they speak to the trainer. Without it they default
-              to no honorific rather than guessing one.
-            </span>
           </div>
 
           <label className="block">

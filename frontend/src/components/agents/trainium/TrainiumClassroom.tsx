@@ -167,11 +167,17 @@ function VideoTile({
 export function TrainiumClassroom({
   simulationId,
   autoJoin = false,
+  trainerName = "",
+  trainerAddress = "name",
 }: {
   simulationId: string;
   /** Connect on mount. Set when arriving from the green room, where the
    *  trainer has already pressed start and should not have to press join too. */
   autoJoin?: boolean;
+  /** Who is teaching, as they identified themselves in the green room. Sent on
+   *  the handshake because one join link is shared across many trainers. */
+  trainerName?: string;
+  trainerAddress?: "sir" | "maam" | "name";
 }) {
   const [status, setStatus] = useState("Not joined");
   const [joined, setJoined] = useState(false);
@@ -297,7 +303,14 @@ export function TrainiumClassroom({
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => ws.send(JSON.stringify({ simulation_id: simulationId }));
+    ws.onopen = () =>
+      ws.send(
+        JSON.stringify({
+          simulation_id: simulationId,
+          trainer_name: trainerName,
+          trainer_address: trainerAddress,
+        })
+      );
 
     ws.onmessage = async (event) => {
       if (typeof event.data !== "string") return;

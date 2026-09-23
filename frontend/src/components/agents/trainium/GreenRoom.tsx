@@ -15,6 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatPersonaType } from "@/components/agents/trainium/personaType";
 
+export type TrainerAddress = "sir" | "maam" | "name";
+
 export type GreenRoomPersona = {
   id: string;
   name: string;
@@ -83,7 +85,7 @@ export function GreenRoom({
   durationMin: number;
   personas: GreenRoomPersona[];
   slides: GreenRoomSlide[];
-  onStart: () => void;
+  onStart: (identity: { name: string; address: TrainerAddress }) => void;
 }) {
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
@@ -102,6 +104,24 @@ export function GreenRoom({
   // either way, so the waiting message can go.
   const [devicesResolved, setDevicesResolved] = useState(false);
   const [slideIndex, setSlideIndex] = useState(0);
+  // Set here, not by the admin: one join link is shared across many trainers,
+  // so only the person in this room knows who they are. Remembered per browser
+  // so a repeat trainer does not retype it every session.
+  const [name, setName] = useState(trainerName);
+  const [address, setAddress] = useState<TrainerAddress>("name");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("trainium.trainer");
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as { name?: string; address?: TrainerAddress };
+      if (parsed.name && !trainerName) setName(parsed.name);
+      if (parsed.address) setAddress(parsed.address);
+    } catch {
+      // Private windows and blocked storage both throw; the fields just start
+      // empty, which is the same as a first visit.
+    }
+  }, [trainerName]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -222,8 +242,16 @@ export function GreenRoom({
 
   function start() {
     if (!micOn) return;
+    try {
+      localStorage.setItem(
+        "trainium.trainer",
+        JSON.stringify({ name: name.trim(), address })
+      );
+    } catch {
+      // Not being able to remember it is not a reason to block the session.
+    }
     stopDevices();
-    onStart();
+    onStart({ name: name.trim(), address });
   }
 
   const slide = slides[slideIndex];
@@ -242,7 +270,7 @@ export function GreenRoom({
           </p>
           <h1 className="mt-1.5 text-2xl font-semibold tracking-tight">{title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {trainerName ? `${trainerName}, you are` : "You are"} teaching{" "}
+            {name.trim() ? `${name.trim()}, you are` : "You are"} teaching{" "}
             {personas.length} {personas.length === 1 ? "learner" : "learners"}
             {courseTitle ? ` through ${courseTitle}` : ""}. The session runs for{" "}
             {durationMin} minutes and then closes itself.
@@ -281,7 +309,38 @@ export function GreenRoom({
         {/* Kit check first: a dead mic is the one failure that wastes the
             whole session, and it is invisible until someone does not respond. */}
         <section>
-          <h2 className="text-sm font-medium">Check your camera and mic</h2>
+          {/* Asked here rather than by the admin: the same join link is shared
+              across trainers, so the admin cannot know who turns up, and
+              guessing an honorific would misgender half of them. */}
+          <h2 className="text-sm font-medium">How should the learners address you?</h2>
+          <div className="mt-2 flex gap-2">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              aria-label="Your name"
+              className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm"
+            />
+            <select
+              value={address}
+              onChange={(e) => setAddress(e.target.value as TrainerAddress)}
+              aria-label="How learners address you"
+              className="shrink-0 rounded-md border bg-background px-2 py-2 text-sm"
+            >
+              <option value="name">By name</option>
+              <option value="maam">Ma&apos;am</option>
+              <option value="sir">Sir</option>
+            </select>
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {address === "name"
+              ? name.trim()
+                ? `They will call you ${name.trim()}.`
+                : "Leave the name blank and they will speak to you without any honorific."
+              : `They will call you ${address === "sir" ? "Sir" : "Ma'am"}.`}
+          </p>
+
+          <h2 className="mt-5 text-sm font-medium">Check your camera and mic</h2>
           <div className="relative mt-2 aspect-video overflow-hidden rounded-xl bg-slate-900">
             <video
               ref={videoRef}
@@ -293,7 +352,7 @@ export function GreenRoom({
             {!cameraOn && (
               <div className="flex h-full w-full items-center justify-center">
                 <span className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-700 text-lg font-semibold text-white">
-                  {trainerName ? initials(trainerName) : "YOU"}
+                  {name.trim() ? initials(name) : "YOU"}
                 </span>
               </div>
             )}

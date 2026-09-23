@@ -32,6 +32,7 @@ from main.agents.trainium.director.policy import DirectorPolicy
 from main.agents.trainium.director.reducer import apply_floor_control, apply_trainer_utterance
 from main.agents.trainium.director.speculative import SpeculativeDirector
 from main.agents.trainium.director.state import PersonaState, create_session, remove_session
+from main.agents.trainium.models import TRAINER_ADDRESSES
 from main.agents.trainium.voices import accent_prompt_for_voice
 from main.config import settings
 
@@ -173,8 +174,14 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             simulation.get("persona_ids", []), simulation.get("persona_overrides", {})
         )
         state.audience = simulation.get("audience", "")
-        state.trainer_name = simulation.get("trainer_name", "")
-        state.trainer_address = simulation.get("trainer_address", "name")
+        # Whoever opened the link is the trainer, so their identity comes from
+        # the green room and nowhere else. Deliberately not falling back to the
+        # stored value: one link is shared across trainers, so what is on the
+        # document is simply whoever ran it last, and inheriting that would
+        # address this trainer by the previous one's name.
+        state.trainer_name = str(config.get("trainer_name") or "").strip()[:80]
+        address = config.get("trainer_address") or "name"
+        state.trainer_address = address if address in TRAINER_ADDRESSES else "name"
         state.duration_s = float(simulation.get("duration_min", 30)) * 60.0
         state.current_objective_id = (
             simulation.get("target_objective_ids") or [None]
@@ -663,6 +670,10 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                     "ended_at": datetime.now(timezone.utc),
                     "actual_duration_s": round(state.elapsed_s),
                     "turns_taken": state.turns_taken,
+                    # Recorded from the green room rather than the admin form,
+                    # so the report names whoever actually taught.
+                    "trainer_name": state.trainer_name,
+                    "trainer_address": state.trainer_address,
                 }
             },
         )
