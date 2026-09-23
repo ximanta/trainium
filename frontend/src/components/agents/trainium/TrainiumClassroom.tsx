@@ -175,6 +175,7 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const slideImgRef = useRef<HTMLImageElement | null>(null);
   // Persona id to display name, kept in a ref so message handlers can resolve
   // names synchronously without waiting on batched state updates.
   const nameByIdRef = useRef<Record<string, string>>({});
@@ -330,19 +331,37 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   // quality 0.6, which lands around 10KB and costs no measurable latency in
   // the Director call, while staying legible enough to read slide text.
   function captureScreenFrame(): string | null {
-    const video = screenVideoRef.current;
-    if (!video || !video.videoWidth) return null;
+    // Capture whatever is actually on the stage. Screen share wins when
+    // active, otherwise the current slide. Reading only the screen-share
+    // element meant personas saw a blank frame during a slide-driven
+    // session.
+    const source: HTMLVideoElement | HTMLImageElement | null = screenSharing
+      ? screenVideoRef.current
+      : slideImgRef.current;
+    if (!source) return null;
+
+    const srcWidth =
+      source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
+    const srcHeight =
+      source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
+    if (!srcWidth || !srcHeight) return null;
 
     const width = 1024;
-    const height = Math.round((video.videoHeight / video.videoWidth) * width);
+    const height = Math.round((srcHeight / srcWidth) * width);
     const canvas = frameCanvasRef.current ?? document.createElement("canvas");
     frameCanvasRef.current = canvas;
     canvas.width = width;
     canvas.height = height;
     const ctx2d = canvas.getContext("2d");
     if (!ctx2d) return null;
-    ctx2d.drawImage(video, 0, 0, width, height);
-    return canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
+    try {
+      ctx2d.drawImage(source, 0, 0, width, height);
+      return canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
+    } catch {
+      // A cross-origin image taints the canvas and makes toDataURL throw.
+      // Better to send nothing than to break the turn.
+      return null;
+    }
   }
 
   function sendScreenFrameIfChanged(ws: WebSocket) {
@@ -468,6 +487,11 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
     // Tell the Director which slide is up, so personas can ask about the
     // material actually on screen.
     send("slide_change", { slide: slides[index].slide_number });
+    // Push the new slide image too, otherwise the Director keeps reasoning
+    // about the previous slide until the trainer happens to speak again.
+    // Waiting a tick lets the img element swap to the new src first.
+    const ws = wsRef.current;
+    if (ws) setTimeout(() => sendScreenFrameIfChanged(ws), 300);
   }
 
   return (
@@ -488,6 +512,11 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
           {!screenSharing && currentSlide && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
+              ref={slideImgRef}
+              // The slide is served from the API origin, so without CORS the
+              // canvas is tainted and the frame capture for the Director
+              // silently fails.
+              crossOrigin="anonymous"
               src={`${process.env.NEXT_PUBLIC_API_URL}/trainium/assets/${currentSlide.image_file_id}`}
               alt={currentSlide.title || `Slide ${currentSlide.slide_number}`}
               className="h-full w-full object-contain"
