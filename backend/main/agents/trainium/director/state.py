@@ -8,6 +8,7 @@ class PersonaState:
     persona_type: str
     voice_id: str
     display_name: str = ""
+    avatar_url: str = ""
     engagement: float = 0.5  # 0..1
     confusion: float = 0.0  # 0..1
     last_spoke_at: float = -999.0  # elapsed_s at last utterance, far in the past initially

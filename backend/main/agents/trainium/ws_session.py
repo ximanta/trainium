@@ -39,6 +39,14 @@ async def _ws_send_json(websocket: WebSocket, payload: dict) -> None:
     await websocket.send_json(payload)
 
 
+def _portrait_url(template: dict) -> str:
+    """Portrait for a persona's video tile. Falls back to a stable stock
+    portrait keyed on the persona id, so the same learner always has the same
+    face, until real avatar_url values are configured.
+    """
+    return template.get("avatar_url") or f"https://i.pravatar.cc/300?u={template['id']}"
+
+
 async def _load_session_personas(persona_ids: list[str]) -> dict[str, PersonaState]:
     cursor = persona_templates_collection.find({"id": {"$in": persona_ids}})
     templates = await cursor.to_list(length=None)
@@ -48,6 +56,7 @@ async def _load_session_personas(persona_ids: list[str]) -> dict[str, PersonaSta
             persona_type=t["type"],
             voice_id=t["voice_id"],
             display_name=t.get("name", t["id"]),
+            avatar_url=_portrait_url(t),
         )
         for t in templates
     }
@@ -320,6 +329,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                     "persona_id": p.persona_id,
                                     "display_name": p.display_name,
                                     "persona_type": p.persona_type,
+                                    "avatar_url": p.avatar_url,
                                     "muted": p.muted,
                                 }
                                 for p in state.persona_states.values()

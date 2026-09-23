@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MicVAD } from "@ricky0123/vad-web";
-import { Hand, Mic, MicOff, MonitorUp, PhoneOff } from "lucide-react";
+import { Hand, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +10,7 @@ type Participant = {
   personaId: string;
   displayName: string;
   personaType: string;
+  avatarUrl: string;
   muted: boolean;
   speaking: boolean;
   handRaised: boolean;
@@ -62,30 +63,74 @@ function avatarColor(personaId: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-function Avatar({
+/** A camera tile in the filmstrip, following the Teams/Zoom convention: the
+ *  video fills the tile, a green border marks the active speaker, and a name
+ *  badge with a mute icon sits in the bottom-left corner. */
+function VideoTile({
   name,
   personaId,
+  avatarUrl,
   speaking,
+  muted,
+  handRaised,
+  onToggleMute,
+  children,
 }: {
   name: string;
   personaId: string;
+  avatarUrl?: string;
   speaking: boolean;
+  muted?: boolean;
+  handRaised?: boolean;
+  onToggleMute?: () => void;
+  children?: React.ReactNode;
 }) {
   return (
-    <span className="relative inline-flex shrink-0">
-      <span
-        className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold text-white ${avatarColor(
-          personaId
-        )} ${speaking ? "ring-2 ring-green-500 ring-offset-2" : ""}`}
-      >
-        {initials(name)}
-      </span>
-      {speaking && (
-        <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 ring-2 ring-card">
-          <span className="h-1.5 w-1.5 animate-ping rounded-full bg-white" />
+    <div
+      className={`relative aspect-video w-44 shrink-0 overflow-hidden rounded-lg bg-slate-800 ${
+        speaking ? "ring-2 ring-green-500" : ""
+      }`}
+    >
+      {children ??
+        (avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div
+            className={`flex h-full w-full items-center justify-center text-lg font-semibold text-white ${avatarColor(
+              personaId
+            )}`}
+          >
+            {initials(name)}
+          </div>
+        ))}
+
+      {handRaised && (
+        <span className="absolute right-1.5 top-1.5 rounded-full bg-amber-400 p-1 shadow">
+          <Hand className="h-3.5 w-3.5 text-amber-950" />
         </span>
       )}
-    </span>
+
+      <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5">
+        {onToggleMute ? (
+          <button
+            onClick={onToggleMute}
+            className="shrink-0 text-white/90 hover:text-white"
+            aria-label={muted ? `Unmute ${name}` : `Mute ${name}`}
+            title={muted ? "Unmute" : "Mute"}
+          >
+            {muted ? (
+              <MicOff className="h-3.5 w-3.5 text-red-400" />
+            ) : (
+              <Mic className="h-3.5 w-3.5" />
+            )}
+          </button>
+        ) : (
+          <Mic className="h-3.5 w-3.5 shrink-0 text-white/90" />
+        )}
+        <span className="truncate text-xs font-medium text-white">{name}</span>
+      </div>
+    </div>
   );
 }
 
@@ -95,6 +140,8 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [selfMuted, setSelfMuted] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -103,6 +150,8 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const isPlayingRef = useRef(false);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastFrameRef = useRef<string | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
@@ -113,6 +162,7 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
       wsRef.current?.close();
       audioContextRef.current?.close();
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
@@ -157,6 +207,19 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
     const micStream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, sampleRate: 16000 },
     });
+
+    // Webcam is separate from the mic stream and optional: a trainer without
+    // a camera, or who declines the prompt, should still be able to run the
+    // session rather than have join() throw.
+    try {
+      const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      cameraStreamRef.current = camStream;
+      if (cameraVideoRef.current) cameraVideoRef.current.srcObject = camStream;
+      setCameraOn(true);
+    } catch {
+      setCameraOn(false);
+    }
+
     const audioContext = new AudioContext({ sampleRate: 16000 });
     audioContextRef.current = audioContext;
 
@@ -177,6 +240,7 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
               personaId: p.persona_id as string,
               displayName: (p.display_name as string) || (p.persona_id as string),
               personaType: p.persona_type as string,
+              avatarUrl: (p.avatar_url as string) || "",
               muted: Boolean(p.muted),
               speaking: false,
               handRaised: false,
@@ -339,10 +403,32 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
     send("screen_share", { on: true });
   }
 
+  function toggleCamera() {
+    const track = cameraStreamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    track.enabled = !track.enabled;
+    setCameraOn(track.enabled);
+  }
+
+  function toggleSelfMute() {
+    // Pausing VAD stops both the turn signalling and the audio chunks, which
+    // is what "mute" means here: the classroom stops hearing the trainer.
+    if (selfMuted) {
+      vadRef.current?.start();
+      setSelfMuted(false);
+      setStatus("Listening");
+    } else {
+      vadRef.current?.pause();
+      setSelfMuted(true);
+      setStatus("You are muted");
+    }
+  }
+
   function leave() {
     vadRef.current?.destroy();
     wsRef.current?.close();
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     setJoined(false);
     setStatus("Left the session");
   }
@@ -351,66 +437,11 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const speakingNow = participants.find((p) => p.speaking);
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4">
-      {/* Participants sidebar */}
-      <aside className="flex w-64 shrink-0 flex-col rounded-lg border bg-card">
-        <div className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">
-            Participants ({participants.length + 1})
-          </h2>
-        </div>
-        <div className="flex-1 overflow-y-auto p-2">
-          <div className="flex items-center gap-3 rounded-md px-2 py-2">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white">
-              YOU
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">You (trainer)</p>
-            </div>
-          </div>
-
-          {participants.map((p) => (
-            <div
-              key={p.personaId}
-              className={`flex items-center gap-3 rounded-md px-2 py-2 transition-colors ${
-                p.speaking ? "bg-green-50" : ""
-              }`}
-            >
-              <Avatar
-                name={p.displayName}
-                personaId={p.personaId}
-                speaking={p.speaking}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{p.displayName}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {p.speaking ? (
-                    <span className="font-medium text-green-600">Speaking...</span>
-                  ) : (
-                    p.personaType.replace(/_/g, " ")
-                  )}
-                </p>
-              </div>
-              {p.handRaised && (
-                <Hand className="h-4 w-4 shrink-0 text-amber-500" aria-label="Hand raised" />
-              )}
-              <button
-                onClick={() => send("set_muted", { persona_id: p.personaId, muted: !p.muted })}
-                disabled={!joined}
-                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-40"
-                aria-label={p.muted ? `Unmute ${p.displayName}` : `Mute ${p.displayName}`}
-                title={p.muted ? "Unmute" : "Mute"}
-              >
-                {p.muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              </button>
-            </div>
-          ))}
-        </div>
-      </aside>
-
-      {/* Stage */}
-      <section className="flex min-w-0 flex-1 flex-col gap-4">
-        <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-lg border bg-muted/30">
+    <div className="flex h-[calc(100vh-7rem)] gap-3">
+      {/* Meeting area: stage on top, camera filmstrip underneath, controls at
+          the bottom, following the Teams/Zoom presenting layout. */}
+      <section className="flex min-w-0 flex-1 flex-col gap-3">
+        <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-xl bg-slate-900">
           <video
             ref={screenVideoRef}
             autoPlay
@@ -419,56 +450,114 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
             className={screenSharing ? "h-full w-full object-contain" : "hidden"}
           />
           {!screenSharing && (
-            <p className="px-6 text-center text-sm text-muted-foreground">
-              Share your screen to present. Course slides will appear here once the
-              session is configured with teaching material.
-            </p>
+            <div className="px-6 text-center">
+              <p className="text-sm text-slate-300">
+                Nothing is being presented
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Share your screen to present. Course slides will appear here once
+                the session is configured with teaching material.
+              </p>
+            </div>
           )}
 
           {speakingNow && (
-            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/85 px-4 py-2 text-white shadow-lg">
-              <Avatar
-                name={speakingNow.displayName}
-                personaId={speakingNow.personaId}
-                speaking
-              />
-              <span className="text-sm font-medium">
+            <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-white backdrop-blur">
+              <span className="flex h-2 w-2 rounded-full bg-green-500" />
+              <span className="text-xs font-medium">
                 {speakingNow.displayName} is speaking
               </span>
             </div>
           )}
         </div>
 
+        {/* Camera filmstrip */}
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <VideoTile name="You" personaId="trainer" speaking={false} muted={selfMuted}>
+            <>
+              <video
+                ref={cameraVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className={`h-full w-full object-cover ${cameraOn ? "" : "hidden"}`}
+              />
+              {!cameraOn && (
+                <div className="flex h-full w-full items-center justify-center bg-slate-700 text-sm font-semibold text-white">
+                  YOU
+                </div>
+              )}
+            </>
+          </VideoTile>
+
+          {participants.map((p) => (
+            <VideoTile
+              key={p.personaId}
+              name={p.displayName}
+              personaId={p.personaId}
+              avatarUrl={p.avatarUrl}
+              speaking={p.speaking}
+              muted={p.muted}
+              handRaised={p.handRaised}
+              onToggleMute={
+                joined
+                  ? () => send("set_muted", { persona_id: p.personaId, muted: !p.muted })
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+
         {raisedHands.length > 0 && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-            <p className="mb-2 text-xs font-medium text-amber-900">
-              Waiting to speak
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {raisedHands.map((p) => (
-                <Button
-                  key={p.personaId}
-                  size="sm"
-                  variant="outline"
-                  onClick={() => send("raise_hand_ack", { persona_id: p.personaId })}
-                >
-                  <Hand className="mr-1.5 h-3.5 w-3.5" />
-                  Call on {p.displayName}
-                </Button>
-              ))}
-            </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+            <span className="text-xs font-medium text-amber-900">Waiting to speak:</span>
+            {raisedHands.map((p) => (
+              <Button
+                key={p.personaId}
+                size="sm"
+                variant="outline"
+                onClick={() => send("raise_hand_ack", { persona_id: p.personaId })}
+              >
+                <Hand className="mr-1.5 h-3.5 w-3.5" />
+                Call on {p.displayName}
+              </Button>
+            ))}
           </div>
         )}
 
         {/* Control bar */}
-        <div className="flex items-center justify-center gap-2 rounded-lg border bg-card p-3">
+        <div className="flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-2.5">
           {!joined ? (
             <Button onClick={join}>Join session</Button>
           ) : (
             <>
+              <Button
+                variant={selfMuted ? "destructive" : "outline"}
+                size="sm"
+                onClick={toggleSelfMute}
+              >
+                {selfMuted ? (
+                  <MicOff className="mr-1.5 h-4 w-4" />
+                ) : (
+                  <Mic className="mr-1.5 h-4 w-4" />
+                )}
+                {selfMuted ? "Unmute" : "Mute"}
+              </Button>
+              <Button
+                variant={cameraOn ? "outline" : "destructive"}
+                size="sm"
+                onClick={toggleCamera}
+              >
+                {cameraOn ? (
+                  <Video className="mr-1.5 h-4 w-4" />
+                ) : (
+                  <VideoOff className="mr-1.5 h-4 w-4" />
+                )}
+                {cameraOn ? "Camera on" : "Camera off"}
+              </Button>
               <Button variant="outline" size="sm" onClick={toggleScreenShare}>
                 <MonitorUp className="mr-1.5 h-4 w-4" />
-                {screenSharing ? "Stop sharing" : "Share screen"}
+                {screenSharing ? "Stop sharing" : "Share"}
               </Button>
               <Button variant="destructive" size="sm" onClick={leave}>
                 <PhoneOff className="mr-1.5 h-4 w-4" />
@@ -481,7 +570,7 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
       </section>
 
       {/* Transcript */}
-      <aside className="flex w-80 shrink-0 flex-col rounded-lg border bg-card">
+      <aside className="flex w-80 shrink-0 flex-col rounded-xl border bg-card">
         <div className="border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Transcript</h2>
         </div>
