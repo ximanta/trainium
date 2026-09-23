@@ -276,7 +276,7 @@ export function GreenRoom({
           their own kit, the deck they will teach, the room they will face.
           The deck takes the middle and the most width because it is what they
           actually spend the time on. */}
-      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[19rem_minmax(0,1fr)_20rem]">
+      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[19rem_minmax(0,1fr)_16rem]">
         {/* Kit check first: a dead mic is the one failure that wastes the
             whole session, and it is invisible until someone does not respond. */}
         <section>
@@ -488,28 +488,32 @@ export function GreenRoom({
         {/* Who is in the room, with their disposition, so the trainer knows
             what kind of pushback to expect from whom. Scrolls in place: a
             class of twenty must not push the page down. */}
-        <section className="flex max-h-[38rem] flex-col">
+        <section className="flex max-h-[30rem] flex-col">
           <h2 className="text-sm font-medium">
             Who is in the room ({personas.length})
           </h2>
           {audience && (
             <p className="mt-1 text-xs text-muted-foreground">{audience}</p>
           )}
-          <div className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+          {/* Name and disposition only. The full character is authoring
+              detail the admin wrote; here it is just a roster, and the wall of
+              text it made buried the one thing worth scanning. */}
+          <div className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
             {personas.map((p) => (
-              <div key={p.id} className="flex gap-3 rounded-lg border p-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white">
+              <div
+                key={p.id}
+                className="flex items-center gap-2.5 rounded-lg border px-3 py-2"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[11px] font-semibold text-white">
                   {initials(p.name)}
                 </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{p.name}</p>
-                  <p className="font-mono text-[11px] text-muted-foreground">
-                    {p.type.replace(/_/g, " ")}
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    {p.profile}
-                  </p>
-                </div>
+                <p className="min-w-0 truncate text-sm">
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    &middot; {p.type.replace(/_/g, " ")}
+                  </span>
+                </p>
               </div>
             ))}
           </div>
