@@ -86,8 +86,20 @@ export function GreenRoom({
 }) {
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
+  // Whether a camera track exists at all, as distinct from being switched off.
+  const [hasCamera, setHasCamera] = useState(true);
   const [micLevel, setMicLevel] = useState(0);
+  // Latches once the mic registers real sound. An enabled mic that has never
+  // picked anything up is the silent failure worth warning about, but not
+  // worth blocking on: the trainer may simply not have spoken yet.
+  const [micProven, setMicProven] = useState(false);
   const [deviceError, setDeviceError] = useState<string | null>(null);
+  // A degraded but workable setup, such as audio with no webcam. Worth saying,
+  // but not an error and not a reason to stop.
+  const [deviceNote, setDeviceNote] = useState<string | null>(null);
+  // Distinct from "a device is on": the permission prompt has been answered
+  // either way, so the waiting message can go.
+  const [devicesResolved, setDevicesResolved] = useState(false);
   const [slideIndex, setSlideIndex] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -110,6 +122,32 @@ export function GreenRoom({
   useEffect(() => {
     let cancelled = false;
 
+    // A live level meter, because "the mic is listed" and "the mic is picking
+    // up my voice" are different things, and only the second one saves a
+    // session. Shared by both paths below so the audio-only fallback is not
+    // left with a dead bar.
+    function meter(stream: MediaStream) {
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+
+      const tick = () => {
+        analyser.getByteTimeDomainData(data);
+        let peak = 0;
+        for (let i = 0; i < data.length; i++) {
+          peak = Math.max(peak, Math.abs(data[i] - 128));
+        }
+        const level = Math.min(1, peak / 40);
+        setMicLevel(level);
+        if (level > 0.12) setMicProven(true);
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    }
+
     async function openDevices() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -122,34 +160,40 @@ export function GreenRoom({
         }
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
+        setHasCamera(stream.getVideoTracks().length > 0);
         setCameraOn(stream.getVideoTracks().some((t) => t.enabled));
         setMicOn(stream.getAudioTracks().some((t) => t.enabled));
+        setDevicesResolved(true);
 
-        // A live level meter, because "the mic is listed" and "the mic is
-        // picking up my voice" are different things, and only the second one
-        // saves a session.
-        const ctx = new AudioContext();
-        audioCtxRef.current = ctx;
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 512;
-        ctx.createMediaStreamSource(stream).connect(analyser);
-        const data = new Uint8Array(analyser.frequencyBinCount);
-
-        const tick = () => {
-          analyser.getByteTimeDomainData(data);
-          let peak = 0;
-          for (let i = 0; i < data.length; i++) {
-            peak = Math.max(peak, Math.abs(data[i] - 128));
-          }
-          setMicLevel(Math.min(1, peak / 40));
-          rafRef.current = requestAnimationFrame(tick);
-        };
-        tick();
+        meter(stream);
       } catch {
-        if (!cancelled) {
-          setDeviceError(
-            "Could not reach your camera or microphone. Check the browser permission prompt, then reload."
+        if (cancelled) return;
+        // A missing or blocked webcam rejects the combined request and would
+        // take the microphone down with it, blocking a trainer who could have
+        // run the session perfectly well. Retry for audio alone before giving
+        // up, since audio is the part that actually matters.
+        try {
+          const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (cancelled) {
+            audioOnly.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          streamRef.current = audioOnly;
+          setHasCamera(false);
+          setCameraOn(false);
+          setMicOn(true);
+          setDevicesResolved(true);
+          meter(audioOnly);
+          setDeviceNote(
+            "No camera available, so your delivery will not be scored. Audio is working, so you can still run the session."
           );
+        } catch {
+          if (!cancelled) {
+            setDevicesResolved(true);
+            setDeviceError(
+              "Could not reach your microphone. Allow access in the browser permission prompt, then reload this page."
+            );
+          }
         }
       }
     }
@@ -176,12 +220,17 @@ export function GreenRoom({
   }
 
   function start() {
+    if (!micOn) return;
     stopDevices();
     onStart();
   }
 
   const slide = slides[slideIndex];
-  const ready = cameraOn || micOn;
+  // The mic is the session's only input: with it off the personas never hear
+  // anything, never respond, and the trainer is left guessing what broke. The
+  // camera only feeds delivery analysis, so a broken webcam is a warning
+  // rather than a reason to stop someone rehearsing.
+  const blocked = !micOn;
 
   return (
     <div className="mx-auto max-w-[88rem]">
@@ -198,9 +247,29 @@ export function GreenRoom({
             {durationMin} minutes.
           </p>
         </div>
-        <Button size="lg" onClick={start} className="shrink-0">
-          Start the session
-        </Button>
+        <div className="shrink-0 text-right">
+          <Button
+            size="lg"
+            onClick={start}
+            disabled={blocked}
+            title={blocked ? "Turn your microphone on to start" : undefined}
+          >
+            Start the session
+          </Button>
+          {blocked ? (
+            <p className="mt-1.5 flex items-center justify-end gap-1 text-xs text-destructive">
+              <AlertCircle className="h-3.5 w-3.5" />
+              Turn your mic on first
+            </p>
+          ) : (
+            !cameraOn && (
+              <p className="mt-1.5 flex items-center justify-end gap-1 text-xs text-amber-700">
+                <AlertCircle className="h-3.5 w-3.5" />
+                Your camera is off, delivery will not be scored
+              </p>
+            )
+          )}
+        </div>
       </div>
 
       {/* Three columns, each a thing the trainer checks before going live:
@@ -230,18 +299,23 @@ export function GreenRoom({
           </div>
 
           <div className="mt-2 flex gap-2">
+            {/* Amber, not red: an off camera is a degraded session, not a
+                broken one. Red is reserved for the mic, which does block. */}
             <Button
-              variant={cameraOn ? "outline" : "destructive"}
+              variant="outline"
               size="sm"
               onClick={toggleCamera}
-              className="flex-1"
+              disabled={!hasCamera}
+              className={`flex-1 ${
+                !cameraOn && hasCamera ? "border-amber-300 text-amber-800" : ""
+              }`}
             >
               {cameraOn ? (
                 <Video className="mr-1.5 h-4 w-4" />
               ) : (
                 <VideoOff className="mr-1.5 h-4 w-4" />
               )}
-              {cameraOn ? "Camera on" : "Camera off"}
+              {!hasCamera ? "No camera" : cameraOn ? "Camera on" : "Camera off"}
             </Button>
             <Button
               variant={micOn ? "outline" : "destructive"}
@@ -260,8 +334,14 @@ export function GreenRoom({
 
           <div className="mt-3">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Say something to test</span>
-              {micLevel > 0.12 && (
+              <span
+                className={micOn ? "text-muted-foreground" : "font-medium text-destructive"}
+              >
+                {micOn
+                  ? "Say something to test"
+                  : "The learners cannot hear you with the mic off"}
+              </span>
+              {micProven && (
                 <span className="flex items-center gap-1 font-medium text-green-700">
                   <Check className="h-3 w-3" />
                   hearing you
@@ -274,12 +354,23 @@ export function GreenRoom({
                 style={{ width: `${Math.round(micLevel * 100)}%` }}
               />
             </div>
+            {micOn && !micProven && (
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                No sound yet. Speak once to confirm the right microphone is picked up.
+              </p>
+            )}
           </div>
 
           {deviceError && (
             <p className="mt-3 flex gap-1.5 text-xs text-destructive">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {deviceError}
+            </p>
+          )}
+          {deviceNote && !deviceError && (
+            <p className="mt-3 flex gap-1.5 text-xs text-amber-700">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {deviceNote}
             </p>
           )}
 
@@ -425,7 +516,7 @@ export function GreenRoom({
         </section>
       </div>
 
-      {!ready && !deviceError && (
+      {!devicesResolved && !deviceError && (
         <p className="mt-4 text-center text-xs text-muted-foreground">
           Waiting for camera and microphone permission.
         </p>
