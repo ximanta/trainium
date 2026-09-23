@@ -7,6 +7,7 @@ import { api } from "@/api/axios";
 import { Button } from "@/components/ui/button";
 import { DeckUpload } from "@/components/agents/trainium/DeckUpload";
 import { PersonaModal, type PersonaDraft } from "@/components/agents/trainium/PersonaModal";
+import { formatPersonaType } from "@/components/agents/trainium/personaType";
 import type { Voice } from "@/components/agents/trainium/VoicePicker";
 
 type PersonaTemplate = {
@@ -328,7 +329,7 @@ export function SessionBuilder() {
                     )}
                   </div>
                   <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                    {p.type.replace(/_/g, " ")}
+                    {formatPersonaType(p.type)}
                   </p>
                   <p className="mt-2 line-clamp-3 text-xs text-muted-foreground">
                     {draft?.profile || p.profile || "No behaviour set yet."}

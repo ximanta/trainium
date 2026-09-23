@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatPersonaType } from "@/components/agents/trainium/personaType";
 
 export type GreenRoomPersona = {
   id: string;
@@ -333,18 +334,24 @@ export function GreenRoom({
           </div>
 
           <div className="mt-3">
+            {/* The prompt is an instruction, so it gives way once it has been
+                followed. Once the mic has proven itself, the confirmation is
+                the only thing left to say. */}
             <div className="flex items-center justify-between text-xs">
-              <span
-                className={micOn ? "text-muted-foreground" : "font-medium text-destructive"}
-              >
-                {micOn
-                  ? "Say something to test"
-                  : "The learners cannot hear you with the mic off"}
-              </span>
-              {micProven && (
+              {micProven ? (
                 <span className="flex items-center gap-1 font-medium text-green-700">
                   <Check className="h-3 w-3" />
-                  hearing you
+                  Mic is working
+                </span>
+              ) : (
+                <span
+                  className={
+                    micOn ? "text-muted-foreground" : "font-medium text-destructive"
+                  }
+                >
+                  {micOn
+                    ? "Say something to test"
+                    : "The learners cannot hear you with the mic off"}
                 </span>
               )}
             </div>
@@ -511,7 +518,7 @@ export function GreenRoom({
                   <span className="font-medium">{p.name}</span>
                   <span className="text-muted-foreground">
                     {" "}
-                    &middot; {p.type.replace(/_/g, " ")}
+                    &middot; {formatPersonaType(p.type)}
                   </span>
                 </p>
               </div>
