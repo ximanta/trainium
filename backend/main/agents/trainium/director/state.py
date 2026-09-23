@@ -7,10 +7,20 @@ class PersonaState:
     persona_id: str
     persona_type: str
     voice_id: str
+    display_name: str = ""
     engagement: float = 0.5  # 0..1
     confusion: float = 0.0  # 0..1
     last_spoke_at: float = -999.0  # elapsed_s at last utterance, far in the past initially
     knowledge_gaps: list[str] = field(default_factory=list)
+    # Trainer-controlled classroom state. A muted persona is excluded from the
+    # Director's eligible list entirely, so it cannot be selected to speak.
+    muted: bool = False
+    # Set when the Director wants this persona to speak but the trainer has
+    # not called on them yet. The pending line is held here until the trainer
+    # acknowledges, matching the doc's raise_hand_ack flow.
+    hand_raised: bool = False
+    pending_line: str = ""
+    pending_intent: str = ""
 
 
 @dataclass

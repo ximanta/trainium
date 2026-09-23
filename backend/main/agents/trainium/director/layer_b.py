@@ -43,15 +43,27 @@ short (1-2 sentences), in a natural spoken register, no markdown, no lists, \
 no meta-commentary about being an AI. Do not ask about objectives not yet \
 covered. Set urgency 1-5 based on how much this needs the trainer's attention \
 now versus could wait.
+
+Spread participation across the class like a real classroom would: strongly \
+prefer a persona who has not spoken yet, and avoid picking the same persona \
+twice in a row unless their disposition makes it clearly the right call.
 """
 
 
-def _format_persona_digest(personas: dict[str, PersonaState]) -> str:
+def _format_persona_digest(personas: dict[str, PersonaState], elapsed_s: float) -> str:
     lines = []
     for p in personas.values():
+        # "Never spoken" matters more than a huge number here: without this the
+        # model has no signal about who has already had a turn and will keep
+        # picking the same persona every time.
+        if p.last_spoke_at < 0:
+            recency = "has not spoken yet this session"
+        else:
+            recency = f"last spoke {elapsed_s - p.last_spoke_at:.0f}s ago"
         lines.append(
-            f"- {p.persona_id} ({p.persona_type}): engagement={p.engagement:.2f}, "
-            f"confusion={p.confusion:.2f}, knowledge_gaps={p.knowledge_gaps}"
+            f"- {p.persona_id} ({p.persona_type}): {recency}, "
+            f"engagement={p.engagement:.2f}, confusion={p.confusion:.2f}, "
+            f"knowledge_gaps={p.knowledge_gaps}"
         )
     return "\n".join(lines) if lines else "(none eligible)"
 
@@ -81,7 +93,7 @@ async def decide_and_speak(
         objectives_covered=state.objectives_covered,
         transcript_recent="\n".join(state.transcript_recent[-6:]) or "(nothing yet)",
         in_progress_partial=state.in_progress_partial or "(nothing yet)",
-        persona_digest=_format_persona_digest(eligible_personas),
+        persona_digest=_format_persona_digest(eligible_personas, state.elapsed_s),
         recent_events=state.recent_events,
     )
 

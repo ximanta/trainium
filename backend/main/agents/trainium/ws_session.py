@@ -42,7 +42,12 @@ async def _load_session_personas(persona_ids: list[str]) -> dict[str, PersonaSta
     cursor = persona_templates_collection.find({"id": {"$in": persona_ids}})
     templates = await cursor.to_list(length=None)
     return {
-        t["id"]: PersonaState(persona_id=t["id"], persona_type=t["type"], voice_id=t["voice_id"])
+        t["id"]: PersonaState(
+            persona_id=t["id"],
+            persona_type=t["type"],
+            voice_id=t["voice_id"],
+            display_name=t.get("name", t["id"]),
+        )
         for t in templates
     }
 
@@ -237,11 +242,57 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             if decision is None or decision.action != "speak":
                 return
 
-            state.record_intervention(decision.persona_id)
-            voice_id = state.persona_states[decision.persona_id].voice_id
+            # The persona does not speak straight away. It raises a hand and
+            # holds its line until the trainer calls on it, which is what puts
+            # the trainer in control of the room (doc's raise_hand_ack flow).
+            persona = state.persona_states[decision.persona_id]
+            persona.hand_raised = True
+            persona.pending_line = decision.text
+            persona.pending_intent = decision.intent
+            await _ws_send_json(
+                websocket,
+                {
+                    "type": "hand_raised",
+                    "data": {
+                        "persona_id": decision.persona_id,
+                        "intent": decision.intent,
+                        "urgency": decision.urgency,
+                    },
+                },
+            )
+            await append_event(
+                simulation_id,
+                state.elapsed_s,
+                kind="hand_raised",
+                actor="director",
+                persona_id=decision.persona_id,
+                payload={"intent": decision.intent, "urgency": decision.urgency},
+            )
+            return
+
+        async def speak_pending(persona_id: str) -> None:
+            """Trainer called on a persona with a raised hand."""
+            nonlocal tts_task
+            persona = state.persona_states.get(persona_id)
+            if persona is None or not persona.hand_raised or not persona.pending_line:
+                return
+
+            decision = DirectorDecision(
+                action="speak",
+                persona_id=persona_id,
+                intent=persona.pending_intent,
+                text=persona.pending_line,
+                urgency=1,
+            )
+            persona.hand_raised = False
+            persona.pending_line = ""
+            persona.pending_intent = ""
+
+            state.elapsed_s = time.monotonic() - session_start
+            state.record_intervention(persona_id)
             tts_task = asyncio.create_task(
                 _stream_persona_tts(
-                    client, decision, voice_id, websocket, simulation_id, state.elapsed_s
+                    client, decision, persona.voice_id, websocket, simulation_id, state.elapsed_s
                 )
             )
 
@@ -249,6 +300,26 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             async with client.aio.live.connect(
                 model=settings.gemini_model_live, config=live_config
             ) as live_session:
+                # Send the full roster up front so the participant sidebar can
+                # show everyone from the start, not just personas who happen
+                # to have spoken already.
+                await _ws_send_json(
+                    websocket,
+                    {
+                        "type": "roster",
+                        "data": {
+                            "personas": [
+                                {
+                                    "persona_id": p.persona_id,
+                                    "display_name": p.display_name,
+                                    "persona_type": p.persona_type,
+                                    "muted": p.muted,
+                                }
+                                for p in state.persona_states.values()
+                            ]
+                        },
+                    },
+                )
                 await _ws_send_json(websocket, {"type": "ready", "data": {}})
 
                 async def relay_client_to_live():
@@ -272,6 +343,16 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                 turn_generation += 1
                                 turn_start_elapsed = time.monotonic() - session_start
                                 director.on_speech_start()
+                                # The trainer started talking. If a persona is
+                                # mid-sentence, that is a real interruption, so
+                                # cancel its audio rather than letting the two
+                                # talk over each other. This is the automatic
+                                # barge-in the manual button was standing in for.
+                                if tts_task is not None and not tts_task.done():
+                                    tts_task.cancel()
+                                    await _ws_send_json(
+                                        websocket, {"type": "barge_in_ack", "data": {}}
+                                    )
                                 await live_session.send_realtime_input(
                                     activity_start=types.ActivityStart()
                                 )
@@ -289,6 +370,31 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                             elif control_type == "barge_in":
                                 if tts_task is not None and not tts_task.done():
                                     tts_task.cancel()
+                            elif control_type == "raise_hand_ack":
+                                # Trainer called on a persona whose hand is up.
+                                await speak_pending(control.get("data", {}).get("persona_id", ""))
+                            elif control_type == "set_muted":
+                                data = control.get("data", {})
+                                persona = state.persona_states.get(data.get("persona_id", ""))
+                                if persona is not None:
+                                    persona.muted = bool(data.get("muted"))
+                                    if persona.muted:
+                                        # Drop any line it was waiting to say;
+                                        # a muted persona should not keep a
+                                        # raised hand the trainer cannot act on.
+                                        persona.hand_raised = False
+                                        persona.pending_line = ""
+                                        persona.pending_intent = ""
+                                    await _ws_send_json(
+                                        websocket,
+                                        {
+                                            "type": "persona_muted",
+                                            "data": {
+                                                "persona_id": persona.persona_id,
+                                                "muted": persona.muted,
+                                            },
+                                        },
+                                    )
 
                 async def relay_live_to_client():
                     async for response in live_session.receive():

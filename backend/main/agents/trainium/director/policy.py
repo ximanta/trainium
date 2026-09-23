@@ -63,19 +63,28 @@ class DirectorPolicy:
         return rng.random() < self._aggregate_speak_probability(state)
 
     def eligible_personas(self, state: SessionState) -> list[str]:
-        """Personas not on their own per-persona cooldown."""
+        """Personas off cooldown, not muted, and not already waiting with a
+        raised hand (their pending line is held until the trainer calls on
+        them, so they must not be reselected in the meantime).
+        """
         return [
             pid
             for pid, p in state.persona_states.items()
-            if state.elapsed_s - p.last_spoke_at >= self.per_persona_cooldown_s
+            if not p.muted
+            and not p.hand_raised
+            and state.elapsed_s - p.last_spoke_at >= self.per_persona_cooldown_s
         ]
 
     def _aggregate_speak_probability(self, state: SessionState) -> float:
         if not state.persona_states:
             return 0.0
+        # Muted personas cannot speak, so they must not contribute to the
+        # chance that *someone* speaks; otherwise a fully muted classroom
+        # still opens the gate and then finds nobody eligible.
         probs = [
             self.speak_probability_by_type.get(p.persona_type, 0.15)
             for p in state.persona_states.values()
+            if not p.muted
         ]
         # Probability at least one persona wants to speak, treating each
         # independently: 1 - product(1 - p_i).
