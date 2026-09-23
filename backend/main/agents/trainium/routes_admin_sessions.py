@@ -77,6 +77,7 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
             # pretending the admin will run the session.
             trainer_id="",
             title=body.get("title", "Untitled session"),
+            audience=body.get("audience", ""),
             course_id=course_id,
             rubric_id=body.get("rubric_id"),
             mode=body.get("mode", "practice"),
@@ -118,6 +119,7 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
 
         allowed = {
             "title",
+            "audience",
             "course_id",
             "rubric_id",
             "persona_ids",

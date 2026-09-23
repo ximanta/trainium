@@ -47,6 +47,7 @@ export function SessionBuilder() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [title, setTitle] = useState("");
   const [courseId, setCourseId] = useState("");
+  const [audience, setAudience] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -98,6 +99,7 @@ export function SessionBuilder() {
 
       const created = await api.post("/trainium/admin/sessions", {
         title: title || "Untitled session",
+        audience,
         course_id: courseId || null,
         persona_ids: Array.from(selected),
         persona_overrides: cleanOverrides,
@@ -151,6 +153,7 @@ export function SessionBuilder() {
             setSelected(new Set());
             setOverrides({});
             setTitle("");
+            setAudience("");
             setCourseId("");
           }}
         >
@@ -199,6 +202,21 @@ export function SessionBuilder() {
           </div>
         </div>
       </div>
+
+      <label className="block">
+        <span className="text-sm font-medium">Who are the learners?</span>
+        <textarea
+          value={audience}
+          onChange={(e) => setAudience(e.target.value)}
+          rows={2}
+          placeholder="e.g. Fresh engineering graduates from tier-2 Indian colleges, first corporate training"
+          className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
+        />
+        <span className="mt-1 block text-xs text-muted-foreground">
+          Shapes how the learners talk and what they ask. Leave blank for the default
+          cohort of fresh graduates.
+        </span>
+      </label>
 
       <div>
         <h2 className="text-sm font-medium">

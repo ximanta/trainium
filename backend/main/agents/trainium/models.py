@@ -179,5 +179,8 @@ class Simulation(BaseModel):
     # separate rather than overloading the id.
     join_token: Optional[str] = None
     title: str = ""
+    # Who the learners are. Shapes how personas speak; blank falls back
+    # to the Director's default cohort.
+    audience: str = ""
     schema_version: int = 1
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

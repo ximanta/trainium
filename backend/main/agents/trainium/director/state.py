@@ -46,6 +46,9 @@ class SessionState:
     # runs can see what is being said right now, not just prior turns.
     in_progress_partial: str = ""
     slide_number: int | None = None
+    # Who the learners are, as free text. Drives how the personas talk, so a
+    # cohort of fresh graduates does not sound like senior consultants.
+    audience: str = ""
     # Latest frame of the trainer's shared screen as JPEG bytes, or None when
     # not sharing. The client only sends a new frame when the screen actually
     # changed, so this is refreshed rarely rather than every turn.

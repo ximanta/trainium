@@ -22,9 +22,27 @@ class DirectorDecision(BaseModel):
     needs_hand_raise: bool = False
 
 
+# Trainium's primary cohort. Admins can override this per session, but the
+# default has to be a real audience rather than a generic "learner", or the
+# personas drift into sounding like senior consultants reviewing the material.
+DEFAULT_AUDIENCE = (
+    "Fresh engineering graduates from tier-2 Indian colleges, in their first "
+    "corporate training programme. They are bright and motivated but new to "
+    "the subject and to professional settings. They ask basic, practical, "
+    "sometimes naive questions, worry about syntax and tooling, relate things "
+    "to college projects or placement prep, and are unsure whether their "
+    "question sounds silly. They do not critique the material like an "
+    "architect would."
+)
+
 _PROMPT_TEMPLATE = """You are the Director of a simulated training classroom. A \
 trainer is teaching live. You control which learner persona speaks next and \
 exactly what they say, if anyone speaks at all.
+
+Who these learners are: {audience}
+Write every line so it sounds like that person actually talking, not like a \
+consultant or an expert reviewer. Match their vocabulary, their confidence \
+level, and the kinds of things they would genuinely be unsure about.
 
 Current objective: {current_objective}
 Slide: {slide_number}
@@ -109,6 +127,7 @@ async def decide_and_speak(
     }
 
     prompt = _PROMPT_TEMPLATE.format(
+        audience=state.audience or DEFAULT_AUDIENCE,
         current_objective=state.current_objective_id or "(none set)",
         slide_number=state.slide_number,
         elapsed_s=state.elapsed_s,
