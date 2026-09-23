@@ -242,10 +242,15 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             if decision is None or decision.action != "speak":
                 return
 
-            # The persona does not speak straight away. It raises a hand and
-            # holds its line until the trainer calls on it, which is what puts
-            # the trainer in control of the room (doc's raise_hand_ack flow).
             persona = state.persona_states[decision.persona_id]
+
+            # Answering the trainer directly needs no hand raise, that is how
+            # a real classroom works. Only an off-thread interruption waits to
+            # be called on (doc's raise_hand_ack flow).
+            if not decision.needs_hand_raise:
+                await speak_now(decision, persona)
+                return
+
             persona.hand_raised = True
             persona.pending_line = decision.text
             persona.pending_intent = decision.intent
@@ -270,9 +275,19 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             )
             return
 
+        async def speak_now(decision: DirectorDecision, persona) -> None:
+            nonlocal tts_task
+            state.elapsed_s = time.monotonic() - session_start
+            state.record_intervention(decision.persona_id)
+            state.record_persona_utterance(persona.display_name or decision.persona_id, decision.text)
+            tts_task = asyncio.create_task(
+                _stream_persona_tts(
+                    client, decision, persona.voice_id, websocket, simulation_id, state.elapsed_s
+                )
+            )
+
         async def speak_pending(persona_id: str) -> None:
             """Trainer called on a persona with a raised hand."""
-            nonlocal tts_task
             persona = state.persona_states.get(persona_id)
             if persona is None or not persona.hand_raised or not persona.pending_line:
                 return
@@ -287,14 +302,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             persona.hand_raised = False
             persona.pending_line = ""
             persona.pending_intent = ""
-
-            state.elapsed_s = time.monotonic() - session_start
-            state.record_intervention(persona_id)
-            tts_task = asyncio.create_task(
-                _stream_persona_tts(
-                    client, decision, persona.voice_id, websocket, simulation_id, state.elapsed_s
-                )
-            )
+            await speak_now(decision, persona)
 
         try:
             async with client.aio.live.connect(

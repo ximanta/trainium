@@ -16,6 +16,10 @@ class DirectorDecision(BaseModel):
     intent: str
     text: str
     urgency: int = Field(ge=1, le=5)
+    # True when the persona is interrupting with something off the current
+    # thread and should wait to be called on. False when they are answering
+    # the trainer directly, which in a real classroom needs no hand raise.
+    needs_hand_raise: bool = False
 
 
 _PROMPT_TEMPLATE = """You are the Director of a simulated training classroom. A \
@@ -27,7 +31,7 @@ Slide: {slide_number}
 Elapsed: {elapsed_s:.0f}s
 Objectives covered so far: {objectives_covered}
 
-Trainer said recently (most recent last):
+Conversation so far (most recent last, includes what the learners already said):
 {transcript_recent}
 Trainer is currently mid-sentence saying (not finished yet): {in_progress_partial}
 
@@ -44,9 +48,21 @@ no meta-commentary about being an AI. Do not ask about objectives not yet \
 covered. Set urgency 1-5 based on how much this needs the trainer's attention \
 now versus could wait.
 
+Never repeat a point another learner already made. If someone has already \
+confirmed they can hear the trainer, or already answered the trainer's \
+question, do not say it again: either add something genuinely new or stay \
+silent. Read the conversation above before deciding.
+
 Spread participation across the class like a real classroom would: strongly \
 prefer a persona who has not spoken yet, and avoid picking the same persona \
 twice in a row unless their disposition makes it clearly the right call.
+
+Set needs_hand_raise to true ONLY when this persona wants to interrupt with \
+something off the current thread, for example a question about an earlier \
+topic, or a tangent the trainer has not invited. When the trainer has just \
+asked the class a question, or the persona is directly responding to what was \
+just said, set it to false: in a real classroom people answer a direct \
+question without putting a hand up first.
 """
 
 
@@ -91,7 +107,10 @@ async def decide_and_speak(
         slide_number=state.slide_number,
         elapsed_s=state.elapsed_s,
         objectives_covered=state.objectives_covered,
-        transcript_recent="\n".join(state.transcript_recent[-6:]) or "(nothing yet)",
+        transcript_recent="\n".join(
+            f"{speaker}: {text}" for speaker, text in state.transcript_recent[-8:]
+        )
+        or "(nothing yet)",
         in_progress_partial=state.in_progress_partial or "(nothing yet)",
         persona_digest=_format_persona_digest(eligible_personas, state.elapsed_s),
         recent_events=state.recent_events,

@@ -30,7 +30,11 @@ class SessionState:
     current_objective_id: str | None = None
     objectives_covered: list[str] = field(default_factory=list)
     elapsed_s: float = 0.0
-    transcript_recent: list[str] = field(default_factory=list)  # last ~90s of trainer speech
+    # The recent conversation, trainer AND personas, as (speaker, text) pairs.
+    # Personas must see what has already been said, including by each other:
+    # without this every persona independently answers the same question and
+    # the class repeats itself.
+    transcript_recent: list[tuple[str, str]] = field(default_factory=list)
     # The current, still-being-spoken utterance, updated live as partial
     # transcript arrives. Cleared once the turn settles and its final text
     # is appended to transcript_recent instead. Exists so speculative Layer B
@@ -46,12 +50,18 @@ class SessionState:
         self.recent_events = self.recent_events[-5:]
 
     def record_trainer_utterance(self, text: str) -> None:
-        self.transcript_recent.append(text)
+        self._append_utterance("Trainer", text)
+        self.in_progress_partial = ""
+
+    def record_persona_utterance(self, speaker: str, text: str) -> None:
+        self._append_utterance(speaker, text)
+
+    def _append_utterance(self, speaker: str, text: str) -> None:
+        self.transcript_recent.append((speaker, text))
         # Keep roughly the last few utterances as a proxy for "last 90s" —
         # exact time-windowing needs per-utterance timestamps, deferred until
         # real session timing is wired in.
-        self.transcript_recent = self.transcript_recent[-10:]
-        self.in_progress_partial = ""
+        self.transcript_recent = self.transcript_recent[-12:]
 
     def interventions_in_last_10min(self) -> int:
         cutoff = self.elapsed_s - 600

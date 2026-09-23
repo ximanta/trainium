@@ -43,6 +43,52 @@ function initials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+// Stable per-persona colour so the same learner always looks the same, the way
+// a familiar face would in a real meeting.
+const AVATAR_COLORS = [
+  "bg-rose-500",
+  "bg-amber-500",
+  "bg-emerald-500",
+  "bg-sky-500",
+  "bg-violet-500",
+  "bg-fuchsia-500",
+  "bg-teal-500",
+  "bg-orange-500",
+];
+
+function avatarColor(personaId: string): string {
+  let hash = 0;
+  for (let i = 0; i < personaId.length; i++) hash = (hash * 31 + personaId.charCodeAt(i)) | 0;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function Avatar({
+  name,
+  personaId,
+  speaking,
+}: {
+  name: string;
+  personaId: string;
+  speaking: boolean;
+}) {
+  return (
+    <span className="relative inline-flex shrink-0">
+      <span
+        className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold text-white ${avatarColor(
+          personaId
+        )} ${speaking ? "ring-2 ring-green-500 ring-offset-2" : ""}`}
+      >
+        {initials(name)}
+      </span>
+      {speaking && (
+        <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 ring-2 ring-card">
+          <span className="h-1.5 w-1.5 animate-ping rounded-full bg-white" />
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const [status, setStatus] = useState("Not joined");
   const [joined, setJoined] = useState(false);
@@ -146,13 +192,23 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
         case "hand_raised":
           updateParticipant(msg.data.persona_id, { handRaised: true });
           break;
-        case "persona_speaking":
-          updateParticipant(msg.data.persona_id, { speaking: true, handRaised: false });
-          setTranscript((prev) => [
-            ...prev,
-            { speaker: msg.data.persona_id, text: msg.data.text },
-          ]);
+        case "persona_speaking": {
+          // Resolve the display name from the roster inside the setter so we
+          // read current state rather than a value captured when the socket
+          // handler was created.
+          let speakerName = msg.data.persona_id as string;
+          setParticipants((prev) => {
+            const match = prev.find((p) => p.personaId === msg.data.persona_id);
+            if (match) speakerName = match.displayName;
+            return prev.map((p) =>
+              p.personaId === msg.data.persona_id
+                ? { ...p, speaking: true, handRaised: false }
+                : p
+            );
+          });
+          setTranscript((prev) => [...prev, { speaker: speakerName, text: msg.data.text }]);
           break;
+        }
         case "persona_audio":
           playbackQueueRef.current.push(base64ToArrayBuffer(msg.data.b64));
           drainPlaybackQueue(audioContext);
@@ -256,6 +312,7 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   }
 
   const raisedHands = participants.filter((p) => p.handRaised);
+  const speakingNow = participants.find((p) => p.speaking);
 
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4">
@@ -268,9 +325,9 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           <div className="flex items-center gap-3 rounded-md px-2 py-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white">
               YOU
-            </div>
+            </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">You (trainer)</p>
             </div>
@@ -279,23 +336,23 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
           {participants.map((p) => (
             <div
               key={p.personaId}
-              className={`flex items-center gap-3 rounded-md px-2 py-2 ${
-                p.speaking ? "bg-primary/10" : ""
+              className={`flex items-center gap-3 rounded-md px-2 py-2 transition-colors ${
+                p.speaking ? "bg-green-50" : ""
               }`}
             >
-              <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                  p.speaking
-                    ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {initials(p.displayName)}
-              </div>
+              <Avatar
+                name={p.displayName}
+                personaId={p.personaId}
+                speaking={p.speaking}
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{p.displayName}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {p.personaType.replace(/_/g, " ")}
+                  {p.speaking ? (
+                    <span className="font-medium text-green-600">Speaking...</span>
+                  ) : (
+                    p.personaType.replace(/_/g, " ")
+                  )}
                 </p>
               </div>
               {p.handRaised && (
@@ -330,6 +387,19 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
               Share your screen to present. Course slides will appear here once the
               session is configured with teaching material.
             </p>
+          )}
+
+          {speakingNow && (
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/85 px-4 py-2 text-white shadow-lg">
+              <Avatar
+                name={speakingNow.displayName}
+                personaId={speakingNow.personaId}
+                speaking
+              />
+              <span className="text-sm font-medium">
+                {speakingNow.displayName} is speaking
+              </span>
+            </div>
           )}
         </div>
 
