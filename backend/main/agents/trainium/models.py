@@ -13,7 +13,15 @@ PersonaType = Literal[
     "distracted",
     "hacker",
     "senior_practitioner",
+    # A learner an admin wrote for one session. It has no template, so its
+    # behaviour comes entirely from the profile text on the override.
+    "custom",
 ]
+
+# Session-scoped learners use this id prefix, which is how the session routes
+# tell them apart from template personas.
+CUSTOM_PERSONA_PREFIX = "custom_"
+CUSTOM_PERSONA_TYPE = "custom"
 
 ScenarioKind = Literal[
     "difficult_learner",

@@ -1,7 +1,12 @@
+import asyncio
+import io
 import uuid
+import wave
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Response
+from google import genai
+from google.genai import types
 
 from main.agents.trainium.auth import User, get_current_admin, get_current_user
 from main.agents.trainium.db_manager import (
@@ -12,6 +17,13 @@ from main.agents.trainium.db_manager import (
 from main.agents.trainium.models import Rubric
 from main.agents.trainium.routes_courses import configure_routes_courses
 from main.agents.trainium.storage import download_file
+from main.agents.trainium.voices import (
+    PREVIEW_LINE,
+    VOICE_BY_ID,
+    VOICE_CATALOGUE,
+    accent_prompt_for_voice,
+)
+from main.config import settings
 
 
 def configure_routes_trainium(app: FastAPI) -> None:
@@ -35,6 +47,57 @@ def configure_routes_trainium(app: FastAPI) -> None:
     async def list_scenarios(user: User = Depends(get_current_user)):
         cursor = scenarios_collection.find({}, {"_id": 0})
         return await cursor.to_list(length=None)
+
+    @app.get("/trainium/voices")
+    async def list_voices(user: User = Depends(get_current_user)):
+        return [v.as_dict() for v in VOICE_CATALOGUE]
+
+    @app.get("/trainium/voices/{voice_id}/preview")
+    async def preview_voice(voice_id: str, user: User = Depends(get_current_user)):
+        """Speak a fixed sample line in `voice_id`, for the admin voice picker.
+
+        Runs the same accent steering as a live session, so what the admin hears
+        is what the trainer will hear.
+        """
+        if voice_id not in VOICE_BY_ID:
+            raise HTTPException(status_code=404, detail="Unknown voice")
+
+        client = genai.Client(api_key=settings.gemini_api_key)
+        try:
+            result = await asyncio.to_thread(
+                client.models.generate_content,
+                model=settings.gemini_model_tts,
+                contents=accent_prompt_for_voice(PREVIEW_LINE, voice_id),
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_id)
+                        )
+                    ),
+                ),
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Voice preview failed: {exc}") from exc
+
+        parts = result.candidates[0].content.parts if result.candidates else []
+        pcm = next((p.inline_data.data for p in parts if p.inline_data), None)
+        if not pcm:
+            raise HTTPException(status_code=502, detail="Voice preview returned no audio")
+
+        # Gemini returns headerless 24kHz mono 16-bit PCM. Wrap it as WAV so an
+        # <audio> element can play it without client-side decoding.
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(24000)
+            wav.writeframes(pcm)
+        return Response(
+            content=buffer.getvalue(),
+            media_type="audio/wav",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
 
     @app.get("/trainium/admin/whoami")
     async def admin_whoami(user: User = Depends(get_current_admin)):

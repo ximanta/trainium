@@ -13,6 +13,9 @@ SPEAK_PROBABILITY_BY_TYPE = {
     "distracted": 0.15,
     "hacker": 0.20,
     "senior_practitioner": 0.20,
+    # Custom learners have no type-derived behaviour, so they sit at the middle
+    # of the range unless the admin sets a probability explicitly.
+    "custom": 0.20,
 }
 
 

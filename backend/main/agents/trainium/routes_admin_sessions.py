@@ -17,29 +17,36 @@ from main.agents.trainium.db_manager import (
     persona_templates_collection,
     simulations_collection,
 )
-from main.agents.trainium.models import PersonaOverride, Simulation
+from main.agents.trainium.models import (
+    CUSTOM_PERSONA_PREFIX,
+    CUSTOM_PERSONA_TYPE,
+    PersonaOverride,
+    Simulation,
+)
+from main.agents.trainium.voices import DEFAULT_VOICE_ID
 
 
 async def _resolve_personas(persona_ids: list[str], overrides: dict) -> list[dict]:
     """Persona templates with any per-session overrides applied, in the order
     the admin listed them.
+
+    A custom learner has no template: it exists only as an override, so the
+    override supplies the whole character and the template lookup is skipped.
     """
     cursor = persona_templates_collection.find({"id": {"$in": persona_ids}}, {"_id": 0})
     by_id = {t["id"]: t for t in await cursor.to_list(length=None)}
 
     resolved = []
     for pid in persona_ids:
-        template = by_id.get(pid)
-        if template is None:
-            continue
+        template = by_id.get(pid) or {}
         override = overrides.get(pid) or {}
         resolved.append(
             {
                 "id": pid,
-                "type": template["type"],
+                "type": template.get("type", CUSTOM_PERSONA_TYPE),
                 "name": override.get("display_name") or template.get("name", pid),
                 "profile": override.get("profile") or template.get("profile", ""),
-                "voice_id": override.get("voice_id") or template["voice_id"],
+                "voice_id": override.get("voice_id") or template.get("voice_id", DEFAULT_VOICE_ID),
                 "speak_probability": override.get("speak_probability"),
             }
         )
@@ -60,11 +67,26 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
             if course is None:
                 raise HTTPException(status_code=404, detail="Course not found")
 
-        found = await persona_templates_collection.count_documents({"id": {"$in": persona_ids}})
-        if found != len(persona_ids):
-            raise HTTPException(status_code=400, detail="One or more persona_ids not found")
-
         raw_overrides = body.get("persona_overrides", {})
+
+        # Custom learners are defined by the session rather than a template, so
+        # they are exempt from the template check but must carry a profile:
+        # without one the Director has no character to act on.
+        custom_ids = [pid for pid in persona_ids if pid.startswith(CUSTOM_PERSONA_PREFIX)]
+        for pid in custom_ids:
+            if not (raw_overrides.get(pid) or {}).get("profile", "").strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Custom learner {pid} needs a profile describing how they behave",
+                )
+
+        template_ids = [pid for pid in persona_ids if pid not in custom_ids]
+        if template_ids:
+            found = await persona_templates_collection.count_documents(
+                {"id": {"$in": template_ids}}
+            )
+            if found != len(template_ids):
+                raise HTTPException(status_code=400, detail="One or more persona_ids not found")
         overrides = {
             pid: PersonaOverride(**data) for pid, data in raw_overrides.items() if pid in persona_ids
         }

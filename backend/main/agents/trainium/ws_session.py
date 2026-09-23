@@ -30,6 +30,7 @@ from main.agents.trainium.director.policy import DirectorPolicy
 from main.agents.trainium.director.reducer import apply_trainer_utterance
 from main.agents.trainium.director.speculative import SpeculativeDirector
 from main.agents.trainium.director.state import PersonaState, create_session, remove_session
+from main.agents.trainium.voices import accent_prompt_for_voice
 from main.config import settings
 
 
@@ -101,7 +102,9 @@ async def _stream_persona_tts(
     seq = 0
     stream = client.models.generate_content_stream(
         model=settings.gemini_model_tts,
-        contents=decision.text,
+        # Accent is steered by prompt: Gemini has no locale parameter and no
+        # voice is natively Indian. See voices.py.
+        contents=accent_prompt_for_voice(decision.text, voice_id),
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],
             speech_config=types.SpeechConfig(

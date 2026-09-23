@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { TrainiumLogo } from "@/components/agents/trainium/TrainiumLogo";
+
 const PIPELINE = [
   {
     tag: "ingest",
@@ -30,14 +32,23 @@ const PERSONAS = [
   { name: "Tomas", type: "Silent", body: "Says nothing unless you notice and draw him in." },
 ];
 
+// The hero console mocks a session mid-flight. One persona speaks while the
+// rest sit in a director-held queue, which is the actual turn model.
+const CONSOLE_TILES = [
+  { name: "Priya", state: "speaking" as const, line: '"Isn\'t that the step from the outage case study?"' },
+  { name: "Devon", state: "listening" as const, line: "Awaiting turn. Director holding queue." },
+  { name: "Amara", state: "listening" as const, line: "Tracking slide 14 reference" },
+  { name: "Tomas", state: "listening" as const, line: "Has not spoken this session" },
+];
+
+const WAVEFORM = [60, 90, 40, 75, 55];
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-slate-900">
       <header className="border-b">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="text-lg font-bold tracking-tight">
-            trainium<span className="text-emerald-500">.</span>
-          </span>
+          <TrainiumLogo />
           <nav className="flex items-center gap-6 text-sm">
             <Link href="#pipeline" className="hidden text-slate-600 hover:text-slate-900 sm:block">
               Pipeline
@@ -102,24 +113,67 @@ export default function LandingPage() {
             </dl>
           </div>
 
-          {/* Framed as the trainer's own camera feed, which is what the product
-              actually captures during a session. */}
-          <div className="overflow-hidden rounded-xl bg-slate-900 shadow-lg">
-            <div className="flex items-center justify-between px-4 py-2.5">
-              <span className="flex items-center gap-2 font-mono text-[11px] text-rose-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+          {/* A mock of the product mid-session: the trainer's own feed above the
+              cast, one persona speaking and the rest held in the queue. */}
+          <div
+            className="overflow-hidden rounded-xl bg-[#14113A] shadow-[0_24px_60px_-30px_rgba(30,27,75,0.5)]"
+            aria-label="Live session console"
+          >
+            <div className="flex items-center justify-between bg-white/[0.06] px-4 py-3">
+              <span className="flex items-center gap-1.5 font-mono text-[11px] text-red-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
                 LIVE, session_4f21
               </span>
-              <span className="font-mono text-[11px] text-slate-400">00:14:02</span>
+              <span className="font-mono text-[11px] text-white/55">00:14:02</span>
             </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/hero-trainer.jpg"
-              alt="A trainer mid-sentence, presenting to camera with slides behind them"
-              className="w-full object-cover"
-            />
-            <div className="flex items-center justify-between px-4 py-2.5 font-mono text-[11px] text-slate-400">
-              <span>4 personas listening</span>
+
+            {/* 1px gap over a lighter ground gives the hairline rules between
+                tiles, rather than borders that would double up. */}
+            <div className="grid grid-cols-2 gap-px bg-white/[0.08]">
+              <div className="relative col-span-2 aspect-[16/7] overflow-hidden bg-gradient-to-br from-[#201C52] to-[#14113A]">
+                <span className="absolute left-3 top-3 z-10 rounded-full bg-[#14113A]/70 px-2.5 py-1 font-mono text-[11px] text-emerald-300 backdrop-blur-sm">
+                  recording, trainer feed
+                </span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/hero-trainer.jpg"
+                  alt="A trainer mid-sentence, presenting to camera with slides behind them"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+
+              {CONSOLE_TILES.map((t) => (
+                <div key={t.name} className="flex flex-col gap-2 bg-[#201C52] p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-white">{t.name}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${
+                        t.state === "speaking"
+                          ? "bg-emerald-500/20 text-emerald-300"
+                          : "bg-white/10 text-white/60"
+                      }`}
+                    >
+                      {t.state}
+                    </span>
+                  </div>
+                  {t.state === "speaking" && (
+                    <div className="flex h-[18px] items-end gap-0.5" aria-hidden="true">
+                      {WAVEFORM.map((h, i) => (
+                        <span
+                          key={i}
+                          style={{ height: `${h}%` }}
+                          className="w-[3px] rounded-sm bg-emerald-400/85"
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-white/70">{t.line}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-white/[0.08] px-4 py-3 font-mono text-[11px] text-white/55">
+              <span>4 personas in room</span>
               <span>director: turn-locked</span>
             </div>
           </div>
