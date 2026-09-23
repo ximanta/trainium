@@ -5,6 +5,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from main.agents.trainium.director.state import PersonaState, SessionState
+from main.agents.trainium.models import describe_trainer
 from main.config import settings
 
 Action = Literal["speak", "react", "silent"]
@@ -43,6 +44,10 @@ Who these learners are: {audience}
 Write every line so it sounds like that person actually talking, not like a \
 consultant or an expert reviewer. Match their vocabulary, their confidence \
 level, and the kinds of things they would genuinely be unsure about.
+
+The trainer: {trainer_description}
+When a persona addresses the trainer directly, they use that form and no other. \
+Never guess an honorific the trainer has not been given.
 
 Current objective: {current_objective}
 Slide: {slide_number}
@@ -86,7 +91,19 @@ topic, or a tangent the trainer has not invited. When the trainer has just \
 asked the class a question, or the persona is directly responding to what was \
 just said, set it to false: in a real classroom people answer a direct \
 question without putting a hand up first.
+
+{floor_instruction}
 """
+
+# Layer A refuses to open the gate while the floor is held, so this branch is
+# only reached if that check is bypassed. Kept as a backstop rather than the
+# primary mechanism.
+_FLOOR_HELD = """\
+IMPORTANT: the trainer has asked the class to hold questions until they finish \
+explaining. Do not speak. Set action to stay_silent."""
+
+_FLOOR_OPEN = """\
+The floor is open: the trainer is taking questions."""
 
 
 def _format_persona_digest(personas: dict[str, PersonaState], elapsed_s: float) -> str:
@@ -128,6 +145,8 @@ async def decide_and_speak(
 
     prompt = _PROMPT_TEMPLATE.format(
         audience=state.audience or DEFAULT_AUDIENCE,
+        trainer_description=describe_trainer(state.trainer_name, state.trainer_address),
+        floor_instruction=_FLOOR_HELD if state.floor_held else _FLOOR_OPEN,
         current_objective=state.current_objective_id or "(none set)",
         slide_number=state.slide_number,
         elapsed_s=state.elapsed_s,

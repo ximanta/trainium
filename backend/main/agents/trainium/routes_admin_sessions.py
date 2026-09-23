@@ -100,6 +100,8 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
             trainer_id="",
             title=body.get("title", "Untitled session"),
             audience=body.get("audience", ""),
+            trainer_name=body.get("trainer_name", ""),
+            trainer_address=body.get("trainer_address", "name"),
             course_id=course_id,
             rubric_id=body.get("rubric_id"),
             mode=body.get("mode", "practice"),

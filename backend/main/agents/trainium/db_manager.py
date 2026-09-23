@@ -32,7 +32,7 @@ PERSONA_TEMPLATE_SEED = [
         "profile": (
             "Engaged and genuinely interested. Asks questions that link what is on the "
             "slide back to something covered earlier, often starting with 'So does that "
-            "mean...' or 'Sir, is this similar to...'. Listens closely and builds on the "
+            "mean...' or 'Is this similar to...'. Listens closely and builds on the "
             "trainer's own words rather than changing the subject. Speaks fluent but "
             "lightly formal Indian English, and is comfortable being the first to speak."
         ),
@@ -45,10 +45,10 @@ PERSONA_TEMPLATE_SEED = [
         "type": "beginner",
         "profile": (
             "New to the subject and aware of it. Asks for plain restatement when jargon "
-            "goes past him, usually as 'Sir, I did not follow the last part' or 'Can you "
+            "goes past him, usually as 'I did not follow the last part' or 'Can you "
             "please explain this term once more'. Needs analogies and concrete examples "
             "before abstractions land. Apologetic about interrupting and sometimes "
-            "prefaces questions with 'Sorry sir'. Simple sentences, occasional hesitation."
+            "prefaces questions with an apology. Simple sentences, occasional hesitation."
         ),
         "voice_id": "Puck",
     },

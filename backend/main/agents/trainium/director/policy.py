@@ -48,6 +48,14 @@ class DirectorPolicy:
         )
         since_last = state.elapsed_s - last_intervention
 
+        # A held floor outranks every trigger below, including the pause one: a
+        # trainer who says "let me explain first" and then pauses to think is
+        # still explaining, and a persona jumping into that pause is exactly the
+        # behaviour they asked to stop. Hands can still go up; that is handled
+        # in Layer B, which is allowed to run so the queue builds.
+        if state.floor_held:
+            return False
+
         # Hard triggers bypass the cooldown and probability roll entirely.
         if trainer_asked_open_question:
             return True

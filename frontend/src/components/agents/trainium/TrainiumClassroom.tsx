@@ -9,6 +9,7 @@ import {
   Mic,
   MicOff,
   MonitorUp,
+  PauseCircle,
   PhoneOff,
   Video,
   VideoOff,
@@ -168,6 +169,11 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const [selfMuted, setSelfMuted] = useState(false);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [slideIndex, setSlideIndex] = useState(0);
+  // Who the Director has picked but whose audio has not started yet. Shown as
+  // "about to speak" so the TTS gap reads as someone drawing breath rather than
+  // as the app having frozen.
+  const [pendingSpeaker, setPendingSpeaker] = useState<string | null>(null);
+  const [floorHeld, setFloorHeld] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -185,6 +191,10 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
   const nameByIdRef = useRef<Record<string, string>>({});
   const lastFrameRef = useRef<string | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  // The line the Director generated, held back until the first audio chunk
+  // plays. Without this the text appears while the room is still silent, which
+  // reads as the transcript spoiling what is about to be said.
+  const pendingLineRef = useRef<TranscriptLine | null>(null);
 
   useEffect(() => {
     return () => {
@@ -198,7 +208,7 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcript]);
+  }, [transcript, pendingSpeaker]);
 
   function updateParticipant(personaId: string, patch: Partial<Participant>) {
     setParticipants((prev) =>
@@ -301,22 +311,52 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
           // transcript.
           const speakerName =
             nameByIdRef.current[msg.data.persona_id] ?? (msg.data.persona_id as string);
-          updateParticipant(msg.data.persona_id, { speaking: true, handRaised: false });
-          setTranscript((prev) => [...prev, { speaker: speakerName, text: msg.data.text }]);
+          // This event fires before TTS generation starts, so the line is held
+          // and only the "about to speak" cue is shown. The text lands when the
+          // voice does.
+          updateParticipant(msg.data.persona_id, { handRaised: false });
+          pendingLineRef.current = { speaker: speakerName, text: msg.data.text };
+          setPendingSpeaker(speakerName);
           break;
         }
-        case "persona_audio":
+        case "persona_audio": {
+          // First chunk of a turn: the voice is now audible, so release the
+          // held line and switch the tile from "about to speak" to "speaking".
+          if (pendingLineRef.current) {
+            const line = pendingLineRef.current;
+            pendingLineRef.current = null;
+            setTranscript((prev) => [...prev, line]);
+            setPendingSpeaker(null);
+            setParticipants((prev) =>
+              prev.map((p) =>
+                nameByIdRef.current[p.personaId] === line.speaker
+                  ? { ...p, speaking: true }
+                  : p
+              )
+            );
+          }
           playbackQueueRef.current.push(base64ToArrayBuffer(msg.data.b64));
           drainPlaybackQueue(audioContext);
           break;
+        }
         case "persona_done":
+          // A turn can end without audio (cancelled by barge-in, or TTS
+          // failed). Drop any held line rather than leaving the indicator up
+          // forever.
+          pendingLineRef.current = null;
+          setPendingSpeaker(null);
           setParticipants((prev) => prev.map((p) => ({ ...p, speaking: false })));
+          break;
+        case "floor_state":
+          setFloorHeld(Boolean(msg.data.held));
           break;
         case "persona_muted":
           updateParticipant(msg.data.persona_id, { muted: msg.data.muted });
           break;
         case "barge_in_ack":
           playbackQueueRef.current = [];
+          pendingLineRef.current = null;
+          setPendingSpeaker(null);
           break;
         case "error":
           setStatus(`Error: ${msg.data.message}`);
@@ -596,12 +636,33 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
             </div>
           )}
 
-          {speakingNow && (
+          {/* One pill, two states. The pending one is what covers the TTS gap,
+              so the room never looks frozen between decision and voice. */}
+          {(speakingNow || pendingSpeaker) && (
             <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-white backdrop-blur">
-              <span className="flex h-2 w-2 rounded-full bg-green-500" />
-              <span className="text-xs font-medium">
-                {speakingNow.displayName} is speaking
-              </span>
+              {speakingNow ? (
+                <>
+                  <span className="flex h-2 w-2 rounded-full bg-green-500" />
+                  <span className="text-xs font-medium">
+                    {speakingNow.displayName} is speaking
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="flex items-center gap-0.5">
+                    {[0, 150, 300].map((delay) => (
+                      <span
+                        key={delay}
+                        style={{ animationDelay: `${delay}ms` }}
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-400"
+                      />
+                    ))}
+                  </span>
+                  <span className="text-xs font-medium">
+                    {pendingSpeaker} is about to speak
+                  </span>
+                </>
+              )}
             </div>
           )}
 
@@ -664,6 +725,21 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
                 <MonitorUp className="mr-1.5 h-4 w-4" />
                 {screenSharing ? "Stop sharing" : "Share"}
               </Button>
+              {/* Also set automatically when the trainer says "let me explain
+                  first" or "any questions". This is the manual override. */}
+              <Button
+                variant={floorHeld ? "default" : "outline"}
+                size="sm"
+                onClick={() => send("set_floor_held", { held: !floorHeld })}
+                title={
+                  floorHeld
+                    ? "Learners are holding their questions"
+                    : "Learners may ask questions"
+                }
+              >
+                <PauseCircle className="mr-1.5 h-4 w-4" />
+                {floorHeld ? "Questions held" : "Hold questions"}
+              </Button>
               <Button variant="destructive" size="sm" onClick={leave}>
                 <PhoneOff className="mr-1.5 h-4 w-4" />
                 Leave
@@ -674,23 +750,58 @@ export function TrainiumClassroom({ simulationId }: { simulationId: string }) {
         </div>
       </section>
 
-      {/* Transcript */}
+      {/* Transcript. Lines land as the voice plays, not when the Director
+          decides, so reading along matches what is being heard. */}
       <aside className="flex w-72 shrink-0 flex-col rounded-xl border bg-card">
-        <div className="border-b px-4 py-2">
+        <div className="flex items-center justify-between border-b px-4 py-2">
           <h2 className="text-xs font-semibold">Transcript</h2>
+          {floorHeld && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
+              questions held
+            </span>
+          )}
         </div>
         <div className="flex-1 space-y-3 overflow-y-auto p-3 text-sm">
-          {transcript.length === 0 && (
+          {transcript.length === 0 && !pendingSpeaker && (
             <p className="text-xs text-muted-foreground">
-              The conversation will appear here.
+              The conversation will appear here as it is spoken.
             </p>
           )}
-          {transcript.map((line, i) => (
-            <div key={i}>
-              <p className="text-xs font-medium text-muted-foreground">{line.speaker}</p>
-              <p className="text-sm">{line.text}</p>
+          {transcript.map((line, i) => {
+            const isTrainer = line.speaker === "You";
+            return (
+              <div
+                key={i}
+                className={isTrainer ? "border-l-2 border-slate-300 pl-2" : "pl-2"}
+              >
+                <p
+                  className={`text-xs font-medium ${
+                    isTrainer ? "text-slate-500" : "text-indigo-600"
+                  }`}
+                >
+                  {line.speaker}
+                </p>
+                <p className="text-sm leading-snug">{line.text}</p>
+              </div>
+            );
+          })}
+
+          {/* The line is deliberately not shown yet. Only that someone is
+              about to speak, which is what fills the TTS gap. */}
+          {pendingSpeaker && (
+            <div className="pl-2">
+              <p className="text-xs font-medium text-indigo-600">{pendingSpeaker}</p>
+              <p className="flex items-center gap-1 py-1" aria-label="about to speak">
+                {[0, 150, 300].map((delay) => (
+                  <span
+                    key={delay}
+                    style={{ animationDelay: `${delay}ms` }}
+                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-indigo-400"
+                  />
+                ))}
+              </p>
             </div>
-          ))}
+          )}
           <div ref={transcriptEndRef} />
         </div>
       </aside>

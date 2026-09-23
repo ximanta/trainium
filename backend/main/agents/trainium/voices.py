@@ -69,10 +69,13 @@ VOICE_BY_ID = {v.id: v for v in VOICE_CATALOGUE}
 
 DEFAULT_VOICE_ID = "Kore"
 
-# A line that exercises Indian classroom register, so the preview shows both the
-# accent and the phrasing a trainer will actually hear.
+# The same line for every voice, so an admin comparing two voices hears only the
+# difference between them. Deliberately neutral: no honorific, since the trainer
+# may be addressed as Sir or Ma'am, and no subject matter, since the voice is
+# reused across every course.
 PREVIEW_LINE = (
-    "Sir, I have one doubt. In the ReAct loop, how does the agent decide when to stop calling tools?"
+    "Hello. I am excited to attend this training session, and I am looking forward "
+    "to learning something new today."
 )
 
 

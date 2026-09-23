@@ -156,10 +156,33 @@ class PersonaOverride(BaseModel):
     speak_probability: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
 
+# How learners address the trainer. Indian classroom register leans heavily on
+# an honorific, so the alternative to picking one is not neutrality: it is every
+# persona calling a female trainer "Sir".
+TrainerAddress = Literal["sir", "maam", "name"]
+
+
+def describe_trainer(name: str, address: str) -> str:
+    """One line telling the Director how personas should address the trainer."""
+    name = (name or "").strip()
+    if address == "sir":
+        return f"{name or 'The trainer'}, addressed as Sir." if name else "Addressed as Sir."
+    if address == "maam":
+        return f"{name or 'The trainer'}, addressed as Ma'am." if name else "Addressed as Ma'am."
+    if name:
+        return f"{name}, addressed by name as {name}, with no Sir or Ma'am."
+    # Nothing configured: no honorific is safer than guessing one.
+    return "Name unknown. Address them directly without any honorific, never Sir or Ma'am."
+
+
 class Simulation(BaseModel):
     id: str
     org_id: str
     trainer_id: str
+    # Who is teaching, so personas address them correctly. Set by the admin when
+    # the session is created; the trainer only opens the link.
+    trainer_name: str = ""
+    trainer_address: TrainerAddress = "name"
     course_id: Optional[str] = None
     rubric_id: Optional[str] = None
     mode: Literal["practice", "certification", "scenario"] = "practice"

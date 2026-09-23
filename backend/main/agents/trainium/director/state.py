@@ -49,6 +49,14 @@ class SessionState:
     # Who the learners are, as free text. Drives how the personas talk, so a
     # cohort of fresh graduates does not sound like senior consultants.
     audience: str = ""
+    # How personas address the trainer. Without this every persona defaults to
+    # "Sir", which is wrong for half of all trainers.
+    trainer_name: str = ""
+    trainer_address: str = "name"
+    # True while the trainer has asked to hold questions. Personas stay silent
+    # but may still raise a hand, so the queue builds visibly and the trainer
+    # can see who is waiting.
+    floor_held: bool = False
     # Latest frame of the trainer's shared screen as JPEG bytes, or None when
     # not sharing. The client only sends a new frame when the screen actually
     # changed, so this is refreshed rarely rather than every turn.

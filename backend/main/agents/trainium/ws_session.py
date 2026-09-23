@@ -27,7 +27,7 @@ from main.agents.trainium.db_manager import (
 from main.agents.trainium.director.layer_b import DirectorDecision
 from main.agents.trainium.director.persistence import append_event, append_transcript_segment
 from main.agents.trainium.director.policy import DirectorPolicy
-from main.agents.trainium.director.reducer import apply_trainer_utterance
+from main.agents.trainium.director.reducer import apply_floor_control, apply_trainer_utterance
 from main.agents.trainium.director.speculative import SpeculativeDirector
 from main.agents.trainium.director.state import PersonaState, create_session, remove_session
 from main.agents.trainium.voices import accent_prompt_for_voice
@@ -165,6 +165,8 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             simulation.get("persona_ids", []), simulation.get("persona_overrides", {})
         )
         state.audience = simulation.get("audience", "")
+        state.trainer_name = simulation.get("trainer_name", "")
+        state.trainer_address = simulation.get("trainer_address", "name")
         state.current_objective_id = (
             simulation.get("target_objective_ids") or [None]
         )[0]
@@ -254,6 +256,16 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             )
 
             apply_trainer_utterance(state, full_transcript, must_cover_terms=[])
+
+            # "Let me explain first" and "any questions?" change whether anyone
+            # may speak, so the client is told and can show the state on the
+            # control bar.
+            floor_changed = apply_floor_control(state, full_transcript)
+            if floor_changed is not None:
+                await _ws_send_json(
+                    websocket,
+                    {"type": "floor_state", "data": {"held": floor_changed, "source": "speech"}},
+                )
 
             eligible = policy.eligible_personas(state)
             should_open = policy.should_open_gate(
@@ -437,6 +449,22 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                 elif control_type == "raise_hand_ack":
                                     # Trainer called on a persona whose hand is up.
                                     await speak_pending(control.get("data", {}).get("persona_id", ""))
+                                elif control_type == "set_floor_held":
+                                    # Manual override of the same state the
+                                    # trainer's speech sets automatically.
+                                    state.floor_held = bool(
+                                        control.get("data", {}).get("held")
+                                    )
+                                    await _ws_send_json(
+                                        websocket,
+                                        {
+                                            "type": "floor_state",
+                                            "data": {
+                                                "held": state.floor_held,
+                                                "source": "manual",
+                                            },
+                                        },
+                                    )
                                 elif control_type == "set_muted":
                                     data = control.get("data", {})
                                     persona = state.persona_states.get(data.get("persona_id", ""))

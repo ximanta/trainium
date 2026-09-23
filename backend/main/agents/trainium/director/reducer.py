@@ -9,6 +9,64 @@ def _tokenize(text: str) -> set[str]:
     return set(_WORD_RE.findall(text.lower()))
 
 
+# Phrases that mean "stop interrupting me" and "you can ask now". Matched on the
+# trainer's transcript, deterministically: a real classroom runs on these and
+# spending an LLM call to notice them would cost latency on every turn.
+_HOLD_PHRASES = (
+    "let me explain first",
+    "let me finish",
+    "hold your questions",
+    "hold the questions",
+    "save your questions",
+    "questions at the end",
+    "questions later",
+    "no questions for now",
+    "let me complete",
+    "i will take questions",
+    "i'll take questions",
+    "before you ask",
+)
+
+_OPEN_PHRASES = (
+    "any questions",
+    "any doubts",
+    "questions now",
+    "over to you",
+    "you can ask",
+    "go ahead and ask",
+    "open for questions",
+    "open the floor",
+    "anyone have",
+    "what do you think",
+    "does anyone",
+)
+
+
+def apply_floor_control(state: SessionState, utterance: str) -> bool | None:
+    """Hold or release the floor when the trainer says so.
+
+    Returns the new value when it changed, else None, so the caller can tell the
+    client without re-deriving it. Opening wins over holding when a single
+    utterance somehow contains both, because "let me finish, then any questions"
+    ends with the floor open.
+    """
+    text = utterance.lower()
+    opens = any(p in text for p in _OPEN_PHRASES)
+    holds = any(p in text for p in _HOLD_PHRASES)
+
+    if opens:
+        target = False
+    elif holds:
+        target = True
+    else:
+        return None
+
+    if state.floor_held == target:
+        return None
+    state.floor_held = target
+    return target
+
+
 def apply_trainer_utterance(
     state: SessionState, utterance: str, must_cover_terms: list[str]
 ) -> None:
