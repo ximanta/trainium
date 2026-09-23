@@ -56,49 +56,73 @@ export default function LandingPage() {
       </header>
 
       <main>
-        <section className="mx-auto max-w-6xl px-6 py-16">
-          <p className="font-mono text-xs tracking-wide text-indigo-700">
-            &gt; simulated classroom, real signal
-          </p>
-          <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-            A live classroom of AI personas to pressure test how you teach.
-          </h1>
-          <p className="mt-5 max-w-2xl text-slate-600">
-            Trainium runs your session against a director-controlled cast of learner
-            personas, streams the turn-by-turn interaction, and hands the recording to
-            Gemini to produce a coaching report where every score traces back to a moment
-            in the transcript.
-          </p>
+        <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-16 lg:grid-cols-2">
+          <div>
+            <p className="font-mono text-xs tracking-wide text-indigo-700">
+              &gt; simulated classroom, real signal
+            </p>
+            <h1 className="mt-4 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+              A live classroom of AI personas to pressure test how you teach.
+            </h1>
+            <p className="mt-5 text-slate-600">
+              Trainium runs your session against a director-controlled cast of learner
+              personas, streams the turn-by-turn interaction, and hands the recording to
+              Gemini to produce a coaching report where every score traces back to a
+              moment in the transcript.
+            </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              href="/trainium/admin"
-              className="rounded-md bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
-            >
-              Set up a session
-            </Link>
-            <Link
-              href="#pipeline"
-              className="rounded-md border px-5 py-2.5 text-sm font-medium hover:bg-slate-50"
-            >
-              See how it works
-            </Link>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                href="/trainium/admin"
+                className="rounded-md bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
+              >
+                Set up a session
+              </Link>
+              <Link
+                href="#pipeline"
+                className="rounded-md border px-5 py-2.5 text-sm font-medium hover:bg-slate-50"
+              >
+                See how it works
+              </Link>
+            </div>
+
+            <dl className="mt-10 flex flex-wrap gap-x-10 gap-y-3 text-sm text-slate-500">
+              <div>
+                <dt className="inline font-mono text-slate-900">4+</dt>{" "}
+                <dd className="inline">personas per session</dd>
+              </div>
+              <div>
+                <dt className="inline font-mono text-slate-900">live</dt>{" "}
+                <dd className="inline">slide-aware questions</dd>
+              </div>
+              <div>
+                <dt className="inline font-mono text-slate-900">100%</dt>{" "}
+                <dd className="inline">evidence-cited scores</dd>
+              </div>
+            </dl>
           </div>
 
-          <dl className="mt-10 flex flex-wrap gap-x-10 gap-y-3 text-sm text-slate-500">
-            <div>
-              <dt className="inline font-mono text-slate-900">4+</dt>{" "}
-              <dd className="inline">personas per session</dd>
+          {/* Framed as the trainer's own camera feed, which is what the product
+              actually captures during a session. */}
+          <div className="overflow-hidden rounded-xl bg-slate-900 shadow-lg">
+            <div className="flex items-center justify-between px-4 py-2.5">
+              <span className="flex items-center gap-2 font-mono text-[11px] text-rose-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                LIVE, session_4f21
+              </span>
+              <span className="font-mono text-[11px] text-slate-400">00:14:02</span>
             </div>
-            <div>
-              <dt className="inline font-mono text-slate-900">live</dt>{" "}
-              <dd className="inline">slide-aware questions</dd>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/hero-trainer.jpg"
+              alt="A trainer mid-sentence, presenting to camera with slides behind them"
+              className="w-full object-cover"
+            />
+            <div className="flex items-center justify-between px-4 py-2.5 font-mono text-[11px] text-slate-400">
+              <span>4 personas listening</span>
+              <span>director: turn-locked</span>
             </div>
-            <div>
-              <dt className="inline font-mono text-slate-900">100%</dt>{" "}
-              <dd className="inline">evidence-cited scores</dd>
-            </div>
-          </dl>
+          </div>
         </section>
 
         <section id="pipeline" className="border-t bg-slate-50">
