@@ -150,5 +150,13 @@ class Simulation(BaseModel):
     scenario_id: Optional[str] = None
     target_objective_ids: list[str] = Field(default_factory=list)
     duration_min: int = 30
+    # Director pacing overrides. Defaults (in DirectorPolicy) are tuned for a
+    # realistic 30-minute class: a persona waits 180s before speaking again
+    # and there is a 45s floor between any two interventions. Short demo or
+    # test sessions, especially with only one or two personas, look dead
+    # under those values, so they can be overridden per simulation without
+    # changing real classroom behaviour.
+    min_gap_s: Optional[float] = None
+    per_persona_cooldown_s: Optional[float] = None
     schema_version: int = 1
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

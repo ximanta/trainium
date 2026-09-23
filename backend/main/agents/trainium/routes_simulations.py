@@ -40,6 +40,8 @@ def configure_routes_simulations(app: FastAPI) -> None:
             scenario_id=body.get("scenario_id"),
             target_objective_ids=body.get("target_objective_ids", []),
             duration_min=body.get("duration_min", 30),
+            min_gap_s=body.get("min_gap_s"),
+            per_persona_cooldown_s=body.get("per_persona_cooldown_s"),
         )
         await simulations_collection.insert_one(simulation.model_dump())
         return simulation

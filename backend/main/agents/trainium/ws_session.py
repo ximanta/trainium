@@ -144,7 +144,12 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             simulation.get("target_objective_ids") or [None]
         )[0]
 
-        policy = DirectorPolicy()
+        policy_overrides = {
+            key: simulation[key]
+            for key in ("min_gap_s", "per_persona_cooldown_s")
+            if simulation.get(key) is not None
+        }
+        policy = DirectorPolicy(**policy_overrides)
         director = SpeculativeDirector(policy)
         client = genai.Client(api_key=settings.gemini_api_key)
 
@@ -214,6 +219,16 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                 trainer_asked_open_question="?" in full_transcript,
                 trainer_stated_misconception=False,
                 scenario_directive_due=False,
+            )
+            # Kept deliberately: personas staying silent is usually the Layer A
+            # probability roll working as designed, not a failure. Without this
+            # line a quiet classroom is indistinguishable from a broken
+            # pipeline. should_open=False with a non-empty eligible list means
+            # the roll simply did not fire.
+            print(
+                f"[ws_session] gate: should_open={should_open} eligible={eligible} "
+                f"elapsed={state.elapsed_s:.0f}s",
+                flush=True,
             )
             if not should_open or not eligible:
                 return
