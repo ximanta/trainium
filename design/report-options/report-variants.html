@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trainium Report Variants</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #FBFAF8;
+    --card: #FFFFFF;
+    --ink: #1A1D24;
+    --muted: #6B7280;
+    --line: #E5E3DF;
+    --accent: #4F46E5;
+    --accent-soft: #EEF0FD;
+    --good: #15803D;
+    --good-soft: #EAF6EE;
+    --warn: #B45309;
+    --warn-soft: #FDF3E7;
+    --track: #EBE9E5;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14161A;
+      --card: #1C1F26;
+      --ink: #E8E6E3;
+      --muted: #9AA1AC;
+      --line: #2C3038;
+      --accent: #8B87F5;
+      --accent-soft: #23253A;
+      --good: #4ADE80;
+      --good-soft: #17271D;
+      --warn: #FBBF24;
+      --warn-soft: #2A2113;
+      --track: #2C3038;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14161A;
+    --card: #1C1F26;
+    --ink: #E8E6E3;
+    --muted: #9AA1AC;
+    --line: #2C3038;
+    --accent: #8B87F5;
+    --accent-soft: #23253A;
+    --good: #4ADE80;
+    --good-soft: #17271D;
+    --warn: #FBBF24;
+    --warn-soft: #2A2113;
+    --track: #2C3038;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+  .chooser {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 20px;
+    margin-bottom: 8px;
+  }
+  .chooser h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+  .chooser p { color: var(--muted); font-size: 0.9rem; margin: 6px 0 0; max-width: 62ch; }
+
+  .variant { padding-block: 44px; border-bottom: 1px solid var(--line); }
+  .variant:last-child { border-bottom: 0; }
+  .vhead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .vtag {
+    font-family: var(--mono); font-size: 0.7rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 3px 8px; border-radius: 3px;
+  }
+  .vhead h2 { font-size: 1.15rem; font-weight: 600; }
+  .vnote { color: var(--muted); font-size: 0.85rem; margin: 0 0 22px; max-width: 64ch; }
+
+  /* the report surface itself */
+  .report {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 28px;
+  }
+  @media (max-width: 560px) { .report { padding: 20px 16px; } }
+
+  .rhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .rtitle { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.01em; }
+  .rmeta { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+  .dl {
+    font-family: var(--mono); font-size: 0.72rem; font-weight: 500;
+    border: 1px solid var(--line); border-radius: 5px;
+    padding: 6px 11px; color: var(--muted); white-space: nowrap;
+  }
+
+  .summary { margin-top: 18px; font-size: 0.95rem; }
+
+  .band { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .band > div { flex: 1 1 240px; border-radius: 8px; padding: 13px 15px; }
+  .band h3 { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; }
+  .band ul { margin: 8px 0 0; padding-left: 16px; }
+  .band li { font-size: 0.83rem; line-height: 1.5; margin-top: 5px; }
+  .did { background: var(--good-soft); }
+  .did h3, .did li { color: var(--good); }
+  .next { background: var(--warn-soft); }
+  .next h3, .next li { color: var(--warn); }
+
+  .sechead {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; margin-top: 30px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  .sechead h3 { font-size: 0.95rem; font-weight: 600; }
+  .sechead span { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+
+  /* ---- A: bar rows ---- */
+  .row { padding: 15px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .rowtop { display: flex; align-items: baseline; gap: 12px; }
+  .rowtop .name { font-size: 0.9rem; font-weight: 500; flex: 1; }
+  .score { font-family: var(--mono); font-size: 0.95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .score small { font-weight: 400; color: var(--muted); font-size: 0.78rem; }
+  .meter { height: 5px; border-radius: 3px; background: var(--track); margin-top: 8px; overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+  .meter i.lo { background: var(--warn); }
+  .meter i.hi { background: var(--good); }
+  .why { font-size: 0.85rem; color: var(--muted); margin-top: 9px; }
+  .quotes { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .q {
+    border-left: 2px solid var(--good); padding: 1px 0 1px 11px;
+    font-size: 0.8rem; line-height: 1.5;
+  }
+  .q.bad { border-left-color: var(--warn); }
+  .q time { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); margin-right: 7px; }
+  .none { font-size: 0.8rem; color: var(--muted); font-style: italic; margin-top: 8px; }
+
+  /* ---- B: radar + compact list ---- */
+  .radarwrap { display: flex; gap: 26px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+  .radarwrap svg { flex: 0 0 auto; max-width: 100%; }
+  .legend { flex: 1 1 260px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .lrow { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .lrow:last-child { border-bottom: 0; }
+  .lrow .name { font-size: 0.83rem; flex: 1; min-width: 0; }
+  .dots { display: flex; gap: 3px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--track); }
+  .dot.on { background: var(--accent); }
+  .dot.on.lo { background: var(--warn); }
+  .dot.on.hi { background: var(--good); }
+
+  /* ---- C: timeline ---- */
+  .tl { margin-top: 18px; }
+  .tlbar { position: relative; height: 34px; border-radius: 5px; background: var(--track); overflow: hidden; }
+  .tlbar i { position: absolute; top: 0; bottom: 0; width: 3px; }
+  .tlbar i.good { background: var(--good); }
+  .tlbar i.bad { background: var(--warn); }
+  .tlaxis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.68rem; color: var(--muted); margin-top: 5px; }
+  .moment { display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .moment:last-child { border-bottom: 0; }
+  .moment time { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); flex: 0 0 42px; padding-top: 2px; }
+  .moment .body { flex: 1; min-width: 0; }
+  .moment .tagline { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 0.65rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 2px 6px; border-radius: 3px;
+  }
+  .chip.good { color: var(--good); background: var(--good-soft); }
+  .chip.bad { color: var(--warn); background: var(--warn-soft); }
+  .moment p { margin: 5px 0 0; font-size: 0.85rem; line-height: 1.5; }
+
+  .camoff {
+    margin-top: 12px; border: 1px dashed var(--line); border-radius: 7px;
+    padding: 14px; font-size: 0.82rem; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="chooser">
+    <h1>Three ways to show a session report</h1>
+    <p>
+      Same report in all three, built from a real analysis run: a ten-segment ReAct
+      Agents session where the trainer used a good analogy, deflected one question with
+      "it is in the docs", and dropped a learner's misconception to change slides.
+      Scores and quotes below are the actual model output, not mockups.
+    </p>
+  </div>
+
+  <!-- ================= VARIANT A ================= -->
+  <section class="variant">
+    <div class="vhead">
+      <span class="vtag">Option A</span>
+      <h2>Scorecard</h2>
+    </div>
+    <p class="vnote">
+      Every competency in order, each with a bar, the reason, and the moments behind it.
+      Nothing hidden. Longest to read, but a trainer disputing a score finds the evidence
+      without clicking.
+    </p>
+
+    <div class="report">
+      <div class="rhead">
+        <div>
+          <div class="rtitle">ReAct Agents, cohort 3</div>
+          <div class="rmeta">24 Sep 2026 &middot; 15 min &middot; Anjali Rao &middot; 4 learners</div>
+        </div>
+        <span class="dl">Download PDF</span>
+      </div>
+
+      <p class="summary">
+        You explained the core loop well and used an analogy that landed. Question
+        handling was uneven: one answer was thorough, two were deflected to keep the
+        slides moving.
+      </p>
+
+      <div class="band">
+        <div class="did">
+          <h3>What worked</h3>
+          <ul>
+            <li>Your mechanic analogy at 0:21 gave learners a concrete mental model for iterative reasoning.</li>
+            <li>At 0:59 you covered both the iteration cap and the finish action, and said why the cap matters.</li>
+          </ul>
+        </div>
+        <div class="next">
+          <h3>What to work on</h3>
+          <ul>
+            <li>At 0:43 you answered "it is in the docs". Give a one-line answer or name when you will return to it.</li>
+            <li>Ananya stated a wrong mental model at 1:14 and you moved to the next slide without correcting it.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="sechead">
+        <h3>How you taught</h3>
+        <span>from the transcript</span>
+      </div>
+
+      <div class="row">
+        <div class="rowtop">
+          <span class="name">Concept Explanation</span>
+          <span class="score">5<small>/5</small></span>
+        </div>
+        <div class="meter"><i class="hi" style="width:100%"></i></div>
+        <p class="why">Accurate throughout, and the car-diagnosis analogy gave the loop a concrete shape.</p>
+        <div class="quotes">
+          <div class="q"><time>0:21</time>"Think of it like a mechanic diagnosing a car. They form a hypothesis, run one test, look at the result."</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="rowtop">
+          <span class="name">Question Handling</span>
+          <span class="score">2<small>/5</small></span>
+        </div>
+        <div class="meter"><i class="lo" style="width:40%"></i></div>
+        <p class="why">One strong answer, but two questions were deflected rather than answered.</p>
+        <div class="quotes">
+          <div class="q bad"><time>0:43</time>"It is in the docs, we will come back to that later if there is time."</div>
+          <div class="q"><time>0:59</time>"There is a max iteration cap, and the model emits a finish action when it thinks it has the answer."</div>
+          <div class="q bad"><time>1:21</time>"Moving on to the next slide, we will cover LangGraph now."</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="rowtop">
+          <span class="name">Learner Engagement</span>
+          <span class="score">3<small>/5</small></span>
+        </div>
+        <div class="meter"><i style="width:60%"></i></div>
+        <p class="why">Learners asked questions unprompted, but you did not draw anyone in by name.</p>
+      </div>
+
+      <div class="row">
+        <div class="rowtop">
+          <span class="name">Demo Delivery</span>
+          <span class="score">3<small>/5</small></span>
+        </div>
+        <div class="meter"><i style="width:60%"></i></div>
+        <p class="none">No demo in this session, so there was nothing to judge this on.</p>
+      </div>
+
+      <div class="sechead">
+        <h3>How you came across</h3>
+        <span>from the recording</span>
+      </div>
+      <div class="camoff">
+        Your camera was off, so delivery was not scored. Turn it on next time for
+        feedback on eye contact, posture and gesture.
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= VARIANT B ================= -->
+  <section class="variant">
+    <div class="vhead">
+      <span class="vtag">Option B</span>
+      <h2>Shape first</h2>
+    </div>
+    <p class="vnote">
+      A radar showing the whole profile at once, so strengths and gaps read in a second,
+      with the detail collapsed to one line each. Best when a manager is comparing
+      sessions rather than reading one closely.
+    </p>
+
+    <div class="report">
+      <div class="rhead">
+        <div>
+          <div class="rtitle">ReAct Agents, cohort 3</div>
+          <div class="rmeta">24 Sep 2026 &middot; 15 min &middot; Anjali Rao &middot; 4 learners</div>
+        </div>
+        <span class="dl">Download PDF</span>
+      </div>
+
+      <p class="summary">
+        Strong on explaining the concept, weak on handling the questions it provoked.
+      </p>
+
+      <div class="radarwrap">
+        <!-- 7 axes, radius 96 around centre 130,130; viewBox padded for labels -->
+        <svg width="260" height="260" viewBox="0 0 260 260" role="img"
+             aria-label="Radar chart. Concept Explanation 5, Learner Engagement 3, Question Handling 2, Demo Delivery 3, Lab Facilitation 3, Classroom Management 2, Time Management 4.">
+          <g fill="none" stroke="var(--line)" stroke-width="1">
+            <circle cx="130" cy="130" r="96"/>
+            <circle cx="130" cy="130" r="76.8"/>
+            <circle cx="130" cy="130" r="57.6"/>
+            <circle cx="130" cy="130" r="38.4"/>
+            <circle cx="130" cy="130" r="19.2"/>
+          </g>
+          <g stroke="var(--line)" stroke-width="1">
+            <line x1="130" y1="130" x2="130" y2="34"/>
+            <line x1="130" y1="130" x2="205.0" y2="70.3"/>
+            <line x1="130" y1="130" x2="223.5" y2="151.4"/>
+            <line x1="130" y1="130" x2="171.6" y2="216.5"/>
+            <line x1="130" y1="130" x2="88.4" y2="216.5"/>
+            <line x1="130" y1="130" x2="36.5" y2="151.4"/>
+            <line x1="130" y1="130" x2="55.0" y2="70.3"/>
+          </g>
+          <!-- values: 5,3,2,3,3,2,4 of 5 -->
+          <polygon
+            points="130,34 175.0,94.2 167.4,138.6 155.0,181.9 105.0,181.9 74.6,138.6 130,53.2"
+            fill="var(--accent)" fill-opacity="0.16" stroke="var(--accent)" stroke-width="2"/>
+          <g fill="var(--accent)">
+            <circle cx="130" cy="34" r="3.5"/>
+            <circle cx="175.0" cy="94.2" r="3.5"/>
+            <circle cx="167.4" cy="138.6" r="3.5"/>
+            <circle cx="155.0" cy="181.9" r="3.5"/>
+            <circle cx="105.0" cy="181.9" r="3.5"/>
+            <circle cx="74.6" cy="138.6" r="3.5"/>
+            <circle cx="130" cy="53.2" r="3.5"/>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--muted)" text-anchor="middle">
+            <text x="130" y="20">Concept</text>
+            <text x="222" y="62">Engage</text>
+            <text x="230" y="158">Questions</text>
+            <text x="178" y="234">Demo</text>
+            <text x="82" y="234">Lab</text>
+            <text x="30" y="158">Class</text>
+            <text x="38" y="62">Time</text>
+          </g>
+        </svg>
+
+        <div class="legend">
+          <div class="lrow">
+            <span class="name">Concept Explanation</span>
+            <span class="dots"><i class="dot on hi"></i><i class="dot on hi"></i><i class="dot on hi"></i><i class="dot on hi"></i><i class="dot on hi"></i></span>
+            <span class="score">5</span>
+          </div>
+          <div class="lrow">
+            <span class="name">Time Management</span>
+            <span class="dots"><i class="dot on"></i><i class="dot on"></i><i class="dot on"></i><i class="dot on"></i><i class="dot"></i></span>
+            <span class="score">4</span>
+          </div>
+          <div class="lrow">
+            <span class="name">Learner Engagement</span>
+            <span class="dots"><i class="dot on"></i><i class="dot on"></i><i class="dot on"></i><i class="dot"></i><i class="dot"></i></span>
+            <span class="score">3</span>
+          </div>
+          <div class="lrow">
+            <span class="name">Demo Delivery</span>
+            <span class="dots"><i class="dot on"></i><i class="dot on"></i><i class="dot on"></i><i class="dot"></i><i class="dot"></i></span>
+            <span class="score">3</span>
+          </div>
+          <div class="lrow">
+            <span class="name">Lab Facilitation</span>
+            <span class="dots"><i class="dot on"></i><i class="dot on"></i><i class="dot on"></i><i class="dot"></i><i class="dot"></i></span>
+            <span class="score">3</span>
+          </div>
+          <div class="lrow">
+            <span class="name">Question Handling</span>
+            <span class="dots"><i class="dot on lo"></i><i class="dot on lo"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></span>
+            <span class="score">2</span>
+          </div>
+          <div class="lrow">
+            <span class="name">Classroom Management</span>
+            <span class="dots"><i class="dot on lo"></i><i class="dot on lo"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></span>
+            <span class="score">2</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="did">
+          <h3>What worked</h3>
+          <ul>
+            <li>Your mechanic analogy at 0:21 gave learners a concrete mental model.</li>
+            <li>At 0:59 you covered both the iteration cap and the finish action.</li>
+          </ul>
+        </div>
+        <div class="next">
+          <h3>What to work on</h3>
+          <ul>
+            <li>At 0:43 you answered "it is in the docs" instead of answering.</li>
+            <li>Ananya's wrong mental model at 1:14 went uncorrected.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= VARIANT C ================= -->
+  <section class="variant">
+    <div class="vhead">
+      <span class="vtag">Option C</span>
+      <h2>Session replay</h2>
+    </div>
+    <p class="vnote">
+      Ordered by when things happened rather than by competency, so the report reads as
+      the session did. Scores sit underneath. Strongest for coaching, because a trainer
+      relives the moment instead of reading a category.
+    </p>
+
+    <div class="report">
+      <div class="rhead">
+        <div>
+          <div class="rtitle">ReAct Agents, cohort 3</div>
+          <div class="rmeta">24 Sep 2026 &middot; 15 min &middot; Anjali Rao &middot; 4 learners</div>
+        </div>
+        <span class="dl">Download PDF</span>
+      </div>
+
+      <p class="summary">
+        You explained the core loop well and used an analogy that landed. Question
+        handling was uneven: one answer was thorough, two were deflected to keep the
+        slides moving.
+      </p>
+
+      <div class="sechead">
+        <h3>How the session went</h3>
+        <span>6 moments across 15 min</span>
+      </div>
+
+      <div class="tl">
+        <div class="tlbar" role="img" aria-label="Timeline of six graded moments across the session.">
+          <i class="good" style="left:2%"></i>
+          <i class="good" style="left:14%"></i>
+          <i class="bad"  style="left:28%"></i>
+          <i class="good" style="left:39%"></i>
+          <i class="bad"  style="left:54%"></i>
+          <i class="bad"  style="left:58%"></i>
+        </div>
+        <div class="tlaxis"><span>0:00</span><span>7:30</span><span>15:00</span></div>
+      </div>
+
+      <div style="margin-top:14px">
+        <div class="moment">
+          <time>0:21</time>
+          <div class="body">
+            <div class="tagline">
+              <span class="chip good">Concept Explanation</span>
+            </div>
+            <p>"Think of it like a mechanic diagnosing a car. They form a hypothesis, run one test, look at the result."</p>
+          </div>
+        </div>
+        <div class="moment">
+          <time>0:43</time>
+          <div class="body">
+            <div class="tagline">
+              <span class="chip bad">Question Handling</span>
+            </div>
+            <p>"It is in the docs, we will come back to that later if there is time." Rohit had asked what the observe step actually observes, and did not get an answer.</p>
+          </div>
+        </div>
+        <div class="moment">
+          <time>0:59</time>
+          <div class="body">
+            <div class="tagline">
+              <span class="chip good">Question Handling</span>
+            </div>
+            <p>"There is a max iteration cap, and the model emits a finish action." You answered Arjun fully and said why the cap matters.</p>
+          </div>
+        </div>
+        <div class="moment">
+          <time>1:21</time>
+          <div class="body">
+            <div class="tagline">
+              <span class="chip bad">Classroom Management</span>
+            </div>
+            <p>"Moving on to the next slide." Ananya had just called the agent "the same as a normal chatbot", and the misconception was left standing.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="sechead">
+        <h3>Scores</h3>
+        <span>from the transcript</span>
+      </div>
+      <div class="legend" style="margin-top:8px">
+        <div class="lrow">
+          <span class="name">Concept Explanation</span>
+          <span class="dots"><i class="dot on hi"></i><i class="dot on hi"></i><i class="dot on hi"></i><i class="dot on hi"></i><i class="dot on hi"></i></span>
+          <span class="score">5</span>
+        </div>
+        <div class="lrow">
+          <span class="name">Time Management</span>
+          <span class="dots"><i class="dot on"></i><i class="dot on"></i><i class="dot on"></i><i class="dot on"></i><i class="dot"></i></span>
+          <span class="score">4</span>
+        </div>
+        <div class="lrow">
+          <span class="name">Learner Engagement</span>
+          <span class="dots"><i class="dot on"></i><i class="dot on"></i><i class="dot on"></i><i class="dot"></i><i class="dot"></i></span>
+          <span class="score">3</span>
+        </div>
+        <div class="lrow">
+          <span class="name">Question Handling</span>
+          <span class="dots"><i class="dot on lo"></i><i class="dot on lo"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></span>
+          <span class="score">2</span>
+        </div>
+        <div class="lrow">
+          <span class="name">Classroom Management</span>
+          <span class="dots"><i class="dot on lo"></i><i class="dot on lo"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></span>
+          <span class="score">2</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+</body>
+</html>
