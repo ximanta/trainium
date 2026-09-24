@@ -28,6 +28,12 @@ class SpeculativeDirector:
         self._cached_at: float = -999.0
         self._cached_transcript_len: int = -1
         self._speaking = False
+        # Counters for a real session: whether speculation actually hides the
+        # Layer B call is the difference between a 1.5s reply and a 4s one,
+        # and it cannot be judged from the code alone.
+        self.hits = 0
+        self.misses = 0
+        self.speculations = 0
 
     def on_speech_start(self):
         self._speaking = True
@@ -49,12 +55,20 @@ class SpeculativeDirector:
             return
         if self._task is not None and not self._task.done():
             return
-        current_len = len(state.transcript_recent)
+        # Length of what is being said right now, not of the settled
+        # transcript. transcript_recent only grows when a turn completes, so
+        # gating on it meant the condition was true once and false for the
+        # rest of the turn: twelve seconds of speech fired one speculation,
+        # which had gone stale by the time the trainer stopped. Every turn
+        # then paid Layer B in full, which is the latency this class exists
+        # to hide.
+        current_len = len(state.in_progress_partial)
         if current_len == self._cached_transcript_len:
             return
         if time.monotonic() - self._cached_at < SPECULATION_INTERVAL_S:
             return
 
+        self.speculations += 1
         self._task = asyncio.create_task(self._speculate(state, eligible_persona_ids, current_len))
 
     async def _speculate(
@@ -91,7 +105,10 @@ class SpeculativeDirector:
         if self._cached_decision is not None and is_fresh:
             decision = self._cached_decision
             self._cached_decision = None
+            self.hits += 1
             return decision
+
+        self.misses += 1
 
         if self._task is not None and not self._task.done():
             # A speculation is mid-flight against slightly stale transcript;

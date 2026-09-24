@@ -272,6 +272,11 @@ def configure_routes_ws_session(app: FastAPI) -> None:
 
         async def run_director_turn(generation: int, ts_start: float) -> None:
             nonlocal tts_task, last_trainer_speech
+            # Timed end to end. Each stage is reported separately because the
+            # fix differs entirely: endpointing is a tuning constant, a Layer B
+            # miss means speculation is not working, and TTS is the model's own
+            # floor.
+            t_turn = time.monotonic()
             last_len = 0
             for _ in range(30):
                 await asyncio.sleep(0.1)
@@ -329,6 +334,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                     {"type": "floor_state", "data": {"held": floor_changed, "source": "speech"}},
                 )
 
+            t_endpoint = time.monotonic()
             eligible = policy.eligible_personas(state)
             should_open = policy.should_open_gate(
                 state,
@@ -350,7 +356,20 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             if not should_open or not eligible:
                 return
 
+            hits_before = director.hits
+            t_layer_b = time.monotonic()
             decision = await director.resolve(state, eligible)
+            layer_b_s = time.monotonic() - t_layer_b
+            cached = director.hits > hits_before
+            # One line per turn, so a real session shows where the wait went
+            # instead of leaving it to be inferred from how slow it felt.
+            print(
+                f"[latency] endpoint={t_endpoint - t_turn:.2f}s "
+                f"layer_b={layer_b_s:.2f}s ({'cached' if cached else 'MISS'}) "
+                f"cache={director.hits}/{director.hits + director.misses} "
+                f"speculations={director.speculations}",
+                flush=True,
+            )
             if decision is None or decision.action != "speak":
                 return
 
