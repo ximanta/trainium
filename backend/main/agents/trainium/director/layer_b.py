@@ -66,6 +66,7 @@ Recent classroom events: {recent_events}
 Screen: {screen_status}
 
 {reply_instruction}
+{silence_instruction}
 
 Decide: should a persona speak, react non-verbally, or stay silent this turn?
 If speak, set persona_id to that persona's id exactly as listed above, and \
@@ -131,6 +132,23 @@ that specific thing rather than changing the subject."""
 
 _REPLY_OPEN = ""
 
+# Two silences worth distinguishing. Before anything has been said there is no
+# material to ask about, so a learner can only ask about the session itself;
+# mid-lesson there is, and pretending otherwise sounds like nobody was
+# listening.
+_SILENCE_OPENING = """\
+IMPORTANT: the session has been open for a while and the trainer has not said \
+anything yet. A learner speaks up the way someone would in a real room that \
+has gone quiet: asking whether they are starting now, whether to wait for \
+others to join, or checking they can be heard. Keep it short and unbothered. \
+Do not ask about the subject matter, because none has been taught yet."""
+
+_SILENCE_MIDWAY = """\
+IMPORTANT: the trainer has gone quiet for a while mid-session. A learner fills \
+the pause naturally: picking up the last thing that was said, asking whether \
+to move on, or checking whether something was missed. Do not start an \
+unrelated new topic."""
+
 
 def _format_persona_digest(personas: dict[str, PersonaState], elapsed_s: float) -> str:
     lines = []
@@ -182,6 +200,13 @@ async def decide_and_speak(
             )
             if state.awaiting_reply_from in state.persona_states
             else _REPLY_OPEN
+        ),
+        silence_instruction=(
+            ""
+            if not state.breaking_silence
+            else _SILENCE_OPENING
+            if not state.transcript_recent
+            else _SILENCE_MIDWAY
         ),
         current_objective=state.current_objective_id or "(none set)",
         slide_number=state.slide_number,

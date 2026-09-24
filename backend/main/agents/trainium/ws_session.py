@@ -26,7 +26,7 @@ from main.agents.trainium.db_manager import (
     persona_templates_collection,
     simulations_collection,
 )
-from main.agents.trainium.director.layer_b import DirectorDecision
+from main.agents.trainium.director.layer_b import DirectorDecision, decide_and_speak
 from main.agents.trainium.director.persistence import append_event, append_transcript_segment
 from main.agents.trainium.director.policy import DirectorPolicy
 from main.agents.trainium.director.reducer import (
@@ -52,6 +52,12 @@ NUDGE_MARKS_S = (600, 300, 60)
 # transcript text with no voice behind it. Long enough to cover generation,
 # short enough that interrupting a rambling persona still feels immediate.
 BARGE_IN_GRACE_S = 2.5
+
+# How long the room tolerates silence before a learner speaks up. Covers the
+# opening too: a trainer who joins and says nothing gets someone asking whether
+# they are starting, the way a real class fills dead air. Long enough that a
+# trainer gathering their thoughts is not interrupted.
+SILENCE_PROMPT_S = 25.0
 
 
 async def _ws_send_json(websocket: WebSocket, payload: dict) -> None:
@@ -255,9 +261,14 @@ def configure_routes_ws_session(app: FastAPI) -> None:
         tts_started_at: float = 0.0
         turn_generation = 0
         turn_start_elapsed = 0.0
+        # When the trainer last finished speaking. Starts at the session's own
+        # start so the opening silence counts: a trainer who joins and says
+        # nothing is exactly the case a real class fills with someone asking
+        # whether we are starting yet.
+        last_trainer_speech = 0.0
 
         async def run_director_turn(generation: int, ts_start: float) -> None:
-            nonlocal tts_task
+            nonlocal tts_task, last_trainer_speech
             last_len = 0
             for _ in range(30):
                 await asyncio.sleep(0.1)
@@ -274,6 +285,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                 return
 
             state.elapsed_s = time.monotonic() - session_start
+            last_trainer_speech = state.elapsed_s
             await _ws_send_json(
                 websocket,
                 {
@@ -317,7 +329,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             eligible = policy.eligible_personas(state)
             should_open = policy.should_open_gate(
                 state,
-                trainer_paused_s=0,
+                trainer_paused_s=state.elapsed_s - last_trainer_speech,
                 trainer_asked_open_question="?" in full_transcript,
                 trainer_stated_misconception=False,
                 scenario_directive_due=False,
@@ -446,6 +458,51 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                         # rather than rebasing session_start, which every other
                         # timing site measures against.
                         state.duration_s += time.monotonic() - session_start
+
+                    async def run_silence_watch():
+                        """Let a learner break a long silence.
+
+                        Without this the room only ever reacts to speech, so a
+                        trainer who joins and says nothing sits in a silent
+                        classroom. A real one does not stay quiet: someone asks
+                        whether we are starting, or whether they should wait for
+                        others. The Layer A policy already treats a long pause
+                        as a hard trigger; nothing was ever measuring the pause.
+                        """
+                        nonlocal last_trainer_speech
+                        while True:
+                            await asyncio.sleep(2.0)
+                            state.elapsed_s = time.monotonic() - session_start
+                            quiet_for = state.elapsed_s - last_trainer_speech
+                            if quiet_for < SILENCE_PROMPT_S:
+                                continue
+                            # Someone already talking, or the floor deliberately
+                            # held, is not an awkward silence.
+                            if state.floor_held or (tts_task and not tts_task.done()):
+                                continue
+                            eligible = policy.eligible_personas(state)
+                            if not eligible or state.out_of_budget():
+                                continue
+
+                            # Layer B directly, not the speculative cache: a
+                            # decision computed while the trainer was speaking
+                            # was made without the silence instruction, so it
+                            # would answer a question nobody asked.
+                            state.breaking_silence = True
+                            try:
+                                decision = await decide_and_speak(state, eligible)
+                            finally:
+                                state.breaking_silence = False
+                            if decision is None or decision.action != "speak":
+                                continue
+                            persona = state.persona_states.get(decision.persona_id)
+                            if persona is None:
+                                continue
+                            # Counts as the trainer having been addressed, so
+                            # the room does not pile on with a second prompt
+                            # two seconds later.
+                            last_trainer_speech = state.elapsed_s
+                            await speak_now(decision, persona)
 
                     async def run_clock():
                         """Push the remaining time and end the session at zero.
@@ -658,8 +715,9 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                     relay_up = asyncio.create_task(relay_client_to_live())
                     relay_down = asyncio.create_task(relay_live_to_client())
                     clock = asyncio.create_task(run_clock())
+                    silence = asyncio.create_task(run_silence_watch())
                     done, pending = await asyncio.wait(
-                        [relay_up, relay_down, clock],
+                        [relay_up, relay_down, clock, silence],
                         return_when=asyncio.FIRST_COMPLETED,
                     )
                     for task in pending:

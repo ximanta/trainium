@@ -67,6 +67,10 @@ class SessionState:
     # persona, so the id is kept separately: an unnamed follow-up question
     # belongs to whoever just spoke.
     last_persona_speaker: str | None = None
+    # Set while a learner is speaking into a silence rather than responding to
+    # something. The Director needs to know, because the natural line differs:
+    # before anything is taught there is no subject to ask about.
+    breaking_silence: bool = False
     # How long the admin allotted. The session ends itself at this point so an
     # abandoned tab cannot keep spending on LLM calls.
     duration_s: float = 1800.0
