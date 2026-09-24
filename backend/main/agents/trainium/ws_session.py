@@ -227,6 +227,9 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                     for s in course.get("slides", [])
                     if s.get("image_file_id")
                 ]
+        # Deck size drives half the phase signal, so the Director knows a
+        # trainer on slide 22 of 25 is closing however much clock is left.
+        state.slides_total = len(slides)
 
         policy_overrides = {
             key: simulation[key]

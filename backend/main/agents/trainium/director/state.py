@@ -46,6 +46,10 @@ class SessionState:
     # runs can see what is being said right now, not just prior turns.
     in_progress_partial: str = ""
     slide_number: int | None = None
+    # How many slides the deck has, so progress through the material can be
+    # measured. Zero when no deck is attached, which the phase logic treats as
+    # "time is the only signal" rather than as a finished deck.
+    slides_total: int = 0
     # Who the learners are, as free text. Drives how the personas talk, so a
     # cohort of fresh graduates does not sound like senior consultants.
     audience: str = ""

@@ -4,6 +4,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
+from main.agents.trainium.director.phase import guidance as phase_guidance, observe
 from main.agents.trainium.director.state import PersonaState, SessionState
 from main.agents.trainium.models import describe_trainer
 from main.config import settings
@@ -65,6 +66,7 @@ Recent classroom events: {recent_events}
 
 Screen: {screen_status}
 
+{phase_instruction}
 {reply_instruction}
 {silence_instruction}
 
@@ -200,6 +202,17 @@ async def decide_and_speak(
             )
             if state.awaiting_reply_from in state.persona_states
             else _REPLY_OPEN
+        ),
+        # Where the session is in its arc. Empty mid-session, which is the
+        # state the rest of the prompt already assumes.
+        phase_instruction=phase_guidance(
+            observe(
+                state.elapsed_s,
+                state.duration_s,
+                state.slide_number,
+                state.slides_total,
+                bool(state.transcript_recent),
+            )
         ),
         silence_instruction=(
             ""
