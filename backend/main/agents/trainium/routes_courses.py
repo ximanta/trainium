@@ -7,7 +7,11 @@ from fastapi import Depends, FastAPI, HTTPException, UploadFile
 from main.agents.trainium.auth import User, get_current_admin
 from main.agents.trainium.db_manager import courses_collection, teaching_graphs_collection
 from main.agents.trainium.ingestion.pptx_extract import extract_slide_text
-from main.agents.trainium.ingestion.slide_render import render_slides_to_png
+from main.agents.trainium.ingestion.slide_render import (
+    extract_pdf_text,
+    render_pdf_to_png,
+    render_slides_to_png,
+)
 from main.agents.trainium.ingestion.teaching_graph import generate_teaching_graph
 from main.agents.trainium.models import Course, CourseAsset, SlideContent
 from main.agents.trainium.storage import upload_file
@@ -73,9 +77,15 @@ def configure_routes_courses(app: FastAPI) -> None:
             },
         )
 
-        if kind == "pptx":
+        # Both deck formats produce one slide per page and share everything
+        # after extraction, so they differ only in how the pages are read.
+        if kind in ("pptx", "pdf"):
             try:
-                slides = await _ingest_pptx(course_id, content)
+                slides = (
+                    await _ingest_pptx(course_id, content)
+                    if kind == "pptx"
+                    else await _ingest_pdf(course_id, content)
+                )
                 await courses_collection.update_one(
                     {"id": course_id},
                     {
@@ -210,9 +220,27 @@ def configure_routes_courses(app: FastAPI) -> None:
 
 
 async def _ingest_pptx(course_id: str, pptx_bytes: bytes) -> list[SlideContent]:
-    text_slides = extract_slide_text(pptx_bytes)
-    images = await render_slides_to_png(pptx_bytes)
+    return await _store_slides(
+        course_id, extract_slide_text(pptx_bytes), await render_slides_to_png(pptx_bytes)
+    )
 
+
+async def _ingest_pdf(course_id: str, pdf_bytes: bytes) -> list[SlideContent]:
+    """One page becomes one slide.
+
+    The PPTX path already converts to PDF before rasterising, so this is the
+    same pipeline with the conversion step skipped. It also means a PDF needs
+    no LibreOffice, which is one less thing to have installed.
+    """
+    return await _store_slides(
+        course_id, extract_pdf_text(pdf_bytes), render_pdf_to_png(pdf_bytes)
+    )
+
+
+async def _store_slides(
+    course_id: str, text_slides: list[dict], images: list[bytes]
+) -> list[SlideContent]:
+    """Pair extracted text with rendered images and put the images in GridFS."""
     slides = []
     for text_slide, image_bytes in zip(text_slides, images):
         image_file_id = await upload_file(

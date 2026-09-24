@@ -34,7 +34,11 @@ export function DeckUpload({ onUploaded }: { onUploaded: (course: Course) => voi
       const form = new FormData();
       form.append("file", file);
       const ingested = await api.post(
-        `/trainium/admin/courses/${created.data.id}/assets?kind=pptx`,
+        // The two deck formats ingest the same way; the kind only picks
+        // which extractor reads the pages.
+        `/trainium/admin/courses/${created.data.id}/assets?kind=${
+          file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "pptx"
+        }`,
         form,
         { timeout: 5 * 60 * 1000 }
       );
@@ -61,7 +65,7 @@ export function DeckUpload({ onUploaded }: { onUploaded: (course: Course) => voi
       <input
         ref={inputRef}
         type="file"
-        accept=".pptx"
+        accept=".pptx,.pdf"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];

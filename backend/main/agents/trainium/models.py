@@ -35,7 +35,15 @@ ScenarioKind = Literal[
 
 
 AssetKind = Literal[
-    "pptx", "instructor_guide", "lab_pdf", "assessment", "demo_guide", "objectives"
+    # Deck formats, both ingested as one slide per page. Distinct from
+    # "lab_pdf", which is reference material rather than something taught from.
+    "pptx",
+    "pdf",
+    "instructor_guide",
+    "lab_pdf",
+    "assessment",
+    "demo_guide",
+    "objectives",
 ]
 
 
