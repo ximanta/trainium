@@ -92,4 +92,13 @@ def configure_routes_reports(app: FastAPI) -> None:
         )
         if report is None:
             raise HTTPException(status_code=404, detail="No report for this session")
+
+        # The session details ride along, because the report page needs them to
+        # head the document and the trainer cannot reach the admin route that
+        # would otherwise supply them.
+        simulation = await simulations_collection.find_one(
+            {"id": simulation_id},
+            {"_id": 0, "title": 1, "trainer_name": 1, "duration_min": 1, "persona_ids": 1},
+        )
+        report["session"] = simulation or {}
         return report

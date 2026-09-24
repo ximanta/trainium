@@ -1,70 +1,72 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Video } from "lucide-react";
+import { AlertCircle, Download, Video } from "lucide-react";
 
 import { api } from "@/api/axios";
+import { Button } from "@/components/ui/button";
+import { ScoreRadar } from "@/components/agents/trainium/ScoreRadar";
+import { downloadReportPdf } from "@/components/agents/trainium/reportPdf";
+import type { Report, Score } from "@/components/agents/trainium/reportTypes";
 
-type Evidence = {
-  competency_key: string;
-  quote: string;
-  ts_start: number;
-  speaker: string;
-  source: "transcript" | "video";
-  positive: boolean;
-};
-
-type Score = {
-  competency_key: string;
-  label: string;
-  score: number;
-  rationale: string;
-  evidence: Evidence[];
-};
-
-type Report = {
-  status: "pending" | "running" | "complete" | "failed";
-  error?: string;
-  summary?: string;
-  strengths?: string[];
-  improvements?: string[];
-  scores?: Score[];
-  video_scores?: Score[];
-  video_analysed?: boolean;
-};
-
-function timecode(seconds: number): string {
+function clock(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** One competency: the score, why, and the moments it came from. Evidence is
- *  always shown rather than hidden behind a toggle, because a score whose
- *  basis is one click away invites trusting the number instead of reading it. */
-function ScoreRow({ score }: { score: Score }) {
+function tone(score: number) {
+  if (score <= 2) return { bar: "bg-amber-600", text: "text-amber-700" };
+  if (score >= 4) return { bar: "bg-green-700", text: "text-green-800" };
+  return { bar: "bg-indigo-600", text: "text-slate-900" };
+}
+
+/** Five pips instead of a number alone: the shape of a 2 against a 5 reads
+ *  before the digit does. */
+function Pips({ score }: { score: number }) {
   return (
-    <div className="border-t py-4 first:border-t-0">
-      <div className="flex items-baseline justify-between gap-4">
-        <h3 className="text-sm font-medium">{score.label}</h3>
-        <span className="shrink-0 font-mono text-sm tabular-nums">
-          <span className="text-lg font-semibold">{score.score}</span>
-          <span className="text-muted-foreground">/5</span>
+    <span className="flex gap-[3px]" aria-hidden="true">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          className={`h-[7px] w-[7px] rounded-sm ${
+            i <= score ? tone(score).bar : "bg-slate-200"
+          }`}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** One criterion: score, reasoning, and the moments it rests on. Evidence is
+ *  always visible rather than behind a toggle, so the number is read together
+ *  with its basis. */
+function Criterion({ score }: { score: Score }) {
+  const t = tone(score.score);
+  return (
+    <div className="border-b py-4 last:border-b-0">
+      <div className="flex items-baseline gap-3">
+        <h3 className="flex-1 text-sm font-medium">{score.label}</h3>
+        <span className={`font-mono text-base tabular-nums ${t.text}`}>
+          {score.score}
+          <span className="text-xs text-muted-foreground">/5</span>
         </span>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">{score.rationale}</p>
-
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-200">
+        <div className={`h-full rounded-full ${t.bar}`} style={{ width: `${score.score * 20}%` }} />
+      </div>
+      <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+        {score.rationale}
+      </p>
       {score.evidence.length > 0 && (
-        <ul className="mt-3 space-y-1.5">
+        <ul className="mt-3 flex flex-col gap-1.5">
           {score.evidence.map((e, i) => (
             <li
               key={i}
-              className={`border-l-2 py-0.5 pl-3 text-xs ${
+              className={`border-l-2 pl-3 text-xs leading-relaxed ${
                 e.positive ? "border-green-400" : "border-amber-400"
               }`}
             >
-              <span className="font-mono text-muted-foreground">
-                {timecode(e.ts_start)}
-              </span>{" "}
+              <span className="font-mono text-muted-foreground">{clock(e.ts_start)}</span>{" "}
               <span className="text-slate-700">
                 {e.source === "video" ? e.quote : `"${e.quote}"`}
               </span>
@@ -85,13 +87,11 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
 
     async function poll() {
       try {
-        const r = await api.get<Report>(
-          `/trainium/sessions/${simulationId}/report`
-        );
+        const r = await api.get<Report>(`/trainium/sessions/${simulationId}/report`);
         if (stop) return;
         setReport(r.data);
-        // Analysis takes a minute or two, so the page waits rather than
-        // making the trainer reload to find out whether it finished.
+        // Analysis takes a minute or two, so the page waits rather than making
+        // the trainer reload to find out whether it finished.
         if (r.data.status === "running" || r.data.status === "pending") {
           setTimeout(poll, 4000);
         }
@@ -120,11 +120,10 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
 
   if (report.status === "running" || report.status === "pending") {
     return (
-      <div className="rounded-lg border p-8 text-center">
+      <div className="rounded-xl border p-10 text-center">
         <p className="text-sm font-medium">Working through your session</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Reading the transcript and watching the recording. This takes a minute or
-          two.
+          Reading the transcript and watching the recording. This takes a minute or two.
         </p>
       </div>
     );
@@ -132,7 +131,7 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
 
   if (report.status === "failed") {
     return (
-      <div className="flex gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+      <div className="flex gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
         <div>
           <p className="text-sm font-medium">No report for this session</p>
@@ -142,22 +141,100 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
     );
   }
 
+  const spoken = report.scores ?? [];
+  const delivery = report.video_scores ?? [];
+  const assessed = [...spoken, ...delivery];
+  const skipped = report.undetermined ?? [];
+  const meta = report.session;
+  const learners = meta?.persona_ids?.length ?? 0;
+  const date = new Date(report.created_at ?? Date.now()).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  // Highest first, so the radar legend opens on a strength and the eye finds
+  // the weak end by travelling rather than hunting.
+  const ranked = [...assessed].sort((a, b) => b.score - a.score);
+
   return (
-    <div className="space-y-8">
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-widest text-indigo-700">
+            Session report
+          </p>
+          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight">
+            {meta?.title || "Session report"}
+          </h1>
+          <p className="mt-1.5 font-mono text-xs text-muted-foreground">
+            {[date, meta?.trainer_name, `${meta?.duration_min ?? 0} min`, `${learners} learners`]
+              .filter(Boolean)
+              .join("  ·  ")}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={() =>
+            downloadReportPdf(report, {
+              title: meta?.title ?? "Session",
+              trainerName: meta?.trainer_name ?? "",
+              durationMin: meta?.duration_min ?? 0,
+              learners,
+              date,
+            })
+          }
+        >
+          <Download className="mr-1.5 h-4 w-4" />
+          Download PDF
+        </Button>
+      </div>
+
       {report.summary && (
-        <section>
-          <p className="text-sm leading-relaxed">{report.summary}</p>
+        <p className="mt-6 max-w-[64ch] leading-relaxed text-slate-700">{report.summary}</p>
+      )}
+
+      {/* Profile: the whole assessed picture before any detail. */}
+      {ranked.length >= 3 && (
+        <section className="mt-10">
+          <div className="flex items-baseline justify-between gap-3 border-b pb-2">
+            <h2 className="text-base font-semibold">Your profile</h2>
+            <span className="font-mono text-xs text-muted-foreground">
+              {assessed.length} of {assessed.length + skipped.length} criteria assessed
+            </span>
+          </div>
+          <div className="mt-5 flex flex-wrap items-center gap-8">
+            <ScoreRadar scores={ranked} />
+            <div className="min-w-[240px] flex-1">
+              {ranked.map((s) => (
+                <div
+                  key={s.competency_key}
+                  className="flex items-center gap-3 border-b py-1.5 last:border-b-0"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm">{s.label}</span>
+                  <Pips score={s.score} />
+                  <span className="w-4 text-right font-mono text-sm tabular-nums">
+                    {s.score}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
       )}
 
       {(report.strengths?.length || report.improvements?.length) && (
-        <section className="grid gap-4 sm:grid-cols-2">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
           {report.strengths && report.strengths.length > 0 && (
-            <div className="rounded-lg border border-green-200 bg-green-50/50 p-4">
-              <h2 className="text-sm font-medium text-green-900">What worked</h2>
-              <ul className="mt-2 space-y-1.5">
+            <div className="rounded-xl border border-green-200 bg-green-50/60 p-4">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-green-800">
+                What worked
+              </h2>
+              <ul className="mt-2.5 flex flex-col gap-2">
                 {report.strengths.map((s, i) => (
-                  <li key={i} className="text-xs leading-relaxed text-green-900">
+                  <li key={i} className="text-sm leading-relaxed text-green-900">
                     {s}
                   </li>
                 ))}
@@ -165,57 +242,71 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
             </div>
           )}
           {report.improvements && report.improvements.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
-              <h2 className="text-sm font-medium text-amber-900">What to work on</h2>
-              <ul className="mt-2 space-y-1.5">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-amber-800">
+                What to work on
+              </h2>
+              <ul className="mt-2.5 flex flex-col gap-2">
                 {report.improvements.map((s, i) => (
-                  <li key={i} className="text-xs leading-relaxed text-amber-900">
+                  <li key={i} className="text-sm leading-relaxed text-amber-900">
                     {s}
                   </li>
                 ))}
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {spoken.length > 0 && (
+        <section className="mt-10">
+          <div className="flex items-baseline justify-between gap-3 border-b pb-2">
+            <h2 className="text-base font-semibold">How you taught</h2>
+            <span className="font-mono text-xs text-muted-foreground">
+              from the transcript
+            </span>
+          </div>
+          <div className="mt-1">
+            {spoken.map((s) => (
+              <Criterion key={s.competency_key} score={s} />
+            ))}
+          </div>
         </section>
       )}
 
-      <section>
-        <h2 className="text-sm font-medium">How you taught</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Scored from what you said, with the moments each score came from.
-        </p>
-        <div className="mt-2">
-          {report.scores?.map((s) => (
-            <ScoreRow key={s.competency_key} score={s} />
-          ))}
+      <section className="mt-10">
+        <div className="flex items-baseline justify-between gap-3 border-b pb-2">
+          <h2 className="flex items-center gap-1.5 text-base font-semibold">
+            <Video className="h-4 w-4 text-muted-foreground" />
+            How you came across
+          </h2>
+          <span className="font-mono text-xs text-muted-foreground">
+            from the recording
+          </span>
         </div>
-      </section>
-
-      <section>
-        <h2 className="flex items-center gap-1.5 text-sm font-medium">
-          <Video className="h-4 w-4 text-muted-foreground" />
-          How you came across
-        </h2>
-        {report.video_analysed && report.video_scores?.length ? (
-          <>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Scored from your camera, separately from what you said.
-            </p>
-            <div className="mt-2">
-              {report.video_scores.map((s) => (
-                <ScoreRow key={s.competency_key} score={s} />
-              ))}
-            </div>
-          </>
+        {delivery.length > 0 ? (
+          <div className="mt-1">
+            {delivery.map((s) => (
+              <Criterion key={s.competency_key} score={s} />
+            ))}
+          </div>
         ) : (
-          // Said plainly rather than shown as zeros: the trainer did not fail
-          // these, there was simply nothing to watch.
-          <p className="mt-2 rounded-lg border border-dashed p-4 text-xs text-muted-foreground">
-            Your camera was off for this session, so delivery was not scored. Turn it
-            on next time to get feedback on eye contact, posture and gesture.
+          <p className="mt-3 rounded-xl border border-dashed p-4 text-sm leading-relaxed text-muted-foreground">
+            Your camera was off for this session, so delivery was not scored. Turn it on
+            next time for feedback on eye contact, posture and gesture.
           </p>
         )}
       </section>
+
+      {/* Named, not scored. The reasons are stored with the report, so an admin
+          reviewing a certification can see what was skipped and why. */}
+      {skipped.length > 0 && (
+        <p className="mt-8 rounded-xl border border-dashed p-4 text-sm leading-relaxed text-muted-foreground">
+          <span className="font-medium text-slate-700">Not assessed in this session:</span>{" "}
+          {skipped.map((u) => u.label).join(", ")}. Nothing took place that these could be
+          judged on, so they were left unscored rather than given a middling mark.
+        </p>
+      )}
     </div>
   );
 }
