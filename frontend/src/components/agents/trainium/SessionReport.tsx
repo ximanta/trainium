@@ -379,9 +379,10 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
             ))}
           </div>
         ) : (
+          /* Sessions now require a camera to start, so this only appears for
+             recordings made before that, or where the video could not be read. */
           <p className="mt-3 rounded-xl border border-dashed p-4 text-sm leading-relaxed text-muted-foreground">
-            Your camera was off for this session, so delivery was not scored. Turn it on
-            next time for feedback on eye contact, posture and gesture.
+            There was no usable recording for this session, so delivery was not scored.
           </p>
         )}
       </section>

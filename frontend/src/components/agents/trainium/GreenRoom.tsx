@@ -97,9 +97,6 @@ export function GreenRoom({
   // worth blocking on: the trainer may simply not have spoken yet.
   const [micProven, setMicProven] = useState(false);
   const [deviceError, setDeviceError] = useState<string | null>(null);
-  // A degraded but workable setup, such as audio with no webcam. Worth saying,
-  // but not an error and not a reason to stop.
-  const [deviceNote, setDeviceNote] = useState<string | null>(null);
   // Distinct from "a device is on": the permission prompt has been answered
   // either way, so the waiting message can go.
   const [devicesResolved, setDevicesResolved] = useState(false);
@@ -189,10 +186,10 @@ export function GreenRoom({
         meter(stream);
       } catch {
         if (cancelled) return;
-        // A missing or blocked webcam rejects the combined request and would
-        // take the microphone down with it, blocking a trainer who could have
-        // run the session perfectly well. Retry for audio alone before giving
-        // up, since audio is the part that actually matters.
+        // Both devices are required, so a failure here stops the session. The
+        // audio track is still opened, because the mic meter is how a trainer
+        // tells a blocked camera from a blocked everything, and because the
+        // message should name what is actually wrong.
         try {
           const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
           if (cancelled) {
@@ -205,14 +202,14 @@ export function GreenRoom({
           setMicOn(true);
           setDevicesResolved(true);
           meter(audioOnly);
-          setDeviceNote(
-            "No camera available, so your delivery will not be scored. Audio is working, so you can still run the session."
+          setDeviceError(
+            "Could not reach your camera. The session is recorded and scored on how you come across, so a camera is required. Check the browser permission prompt, or that no other app is using it, then reload this page."
           );
         } catch {
           if (!cancelled) {
             setDevicesResolved(true);
             setDeviceError(
-              "Could not reach your microphone. Allow access in the browser permission prompt, then reload this page."
+              "Could not reach your camera and microphone. Allow access in the browser permission prompt, then reload this page."
             );
           }
         }
@@ -255,11 +252,14 @@ export function GreenRoom({
   }
 
   const slide = slides[slideIndex];
-  // The mic is the session's only input: with it off the personas never hear
-  // anything, never respond, and the trainer is left guessing what broke. The
-  // camera only feeds delivery analysis, so a broken webcam is a warning
-  // rather than a reason to stop someone rehearsing.
-  const blocked = !micOn;
+  // Both devices are required. The mic is the session's only input, so without
+  // it the personas never hear anything and never respond. The camera is what
+  // delivery is scored from, and a report missing half its criteria is not the
+  // session the trainer was sent here to have.
+  const missing = [!micOn && "microphone", !cameraOn && "camera"].filter(
+    Boolean
+  ) as string[];
+  const blocked = missing.length > 0;
 
   return (
     <div className="mx-auto max-w-[88rem]">
@@ -281,22 +281,17 @@ export function GreenRoom({
             size="lg"
             onClick={start}
             disabled={blocked}
-            title={blocked ? "Turn your microphone on to start" : undefined}
+            title={
+              blocked ? `Turn your ${missing.join(" and ")} on to start` : undefined
+            }
           >
             Start the session
           </Button>
-          {blocked ? (
+          {blocked && (
             <p className="mt-1.5 flex items-center justify-end gap-1 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5" />
-              Turn your mic on first
+              Turn your {missing.join(" and ")} on to start
             </p>
-          ) : (
-            !cameraOn && (
-              <p className="mt-1.5 flex items-center justify-end gap-1 text-xs text-amber-700">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Your camera is off, delivery will not be scored
-              </p>
-            )
           )}
         </div>
       </div>
@@ -359,16 +354,14 @@ export function GreenRoom({
           </div>
 
           <div className="mt-2 flex gap-2">
-            {/* Amber, not red: an off camera is a degraded session, not a
-                broken one. Red is reserved for the mic, which does block. */}
+            {/* Red when off, matching the mic: both now block the session, so
+                styling the camera as a soft warning would misrepresent it. */}
             <Button
-              variant="outline"
+              variant={cameraOn ? "outline" : "destructive"}
               size="sm"
               onClick={toggleCamera}
               disabled={!hasCamera}
-              className={`flex-1 ${
-                !cameraOn && hasCamera ? "border-amber-300 text-amber-800" : ""
-              }`}
+              className="flex-1"
             >
               {cameraOn ? (
                 <Video className="mr-1.5 h-4 w-4" />
@@ -431,12 +424,6 @@ export function GreenRoom({
             <p className="mt-3 flex gap-1.5 text-xs text-destructive">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {deviceError}
-            </p>
-          )}
-          {deviceNote && !deviceError && (
-            <p className="mt-3 flex gap-1.5 text-xs text-amber-700">
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {deviceNote}
             </p>
           )}
 

@@ -16,7 +16,6 @@ import {
   PauseCircle,
   PhoneOff,
   Video,
-  VideoOff,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -591,13 +590,6 @@ export function TrainiumClassroom({
     send("screen_share", { on: true });
   }
 
-  function toggleCamera() {
-    const track = cameraStreamRef.current?.getVideoTracks()[0];
-    if (!track) return;
-    track.enabled = !track.enabled;
-    setCameraOn(track.enabled);
-  }
-
   function toggleSelfMute() {
     // Pausing VAD stops both the turn signalling and the audio chunks, which
     // is what "mute" means here: the classroom stops hearing the trainer.
@@ -937,18 +929,14 @@ export function TrainiumClassroom({
                 )}
                 {selfMuted ? "Unmute" : "Mute"}
               </Button>
-              <Button
-                variant={cameraOn ? "outline" : "destructive"}
-                size="sm"
-                onClick={toggleCamera}
-              >
-                {cameraOn ? (
-                  <Video className="mr-1.5 h-4 w-4" />
-                ) : (
-                  <VideoOff className="mr-1.5 h-4 w-4" />
-                )}
-                {cameraOn ? "Camera on" : "Camera off"}
-              </Button>
+              {/* No camera toggle: the session cannot start without a camera
+                  and delivery is scored from it throughout, so letting it be
+                  switched off mid-session would quietly hollow out half the
+                  report. The indicator stays, the control does not. */}
+              <span className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm text-muted-foreground">
+                <Video className="h-4 w-4" />
+                Camera on
+              </span>
               <Button variant="outline" size="sm" onClick={toggleScreenShare}>
                 <MonitorUp className="mr-1.5 h-4 w-4" />
                 {screenSharing ? "Stop sharing" : "Share"}
