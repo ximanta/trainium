@@ -19,6 +19,69 @@ function clock(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** Draw the score profile as vectors.
+ *
+ *  jsPDF draws rather than screenshots, so the on-screen SVG cannot be
+ *  reused: the same geometry is computed again here. Vector rather than a
+ *  rasterised canvas, so it stays sharp when printed and adds almost nothing
+ *  to the file size.
+ *
+ *  Returns the y position below the chart.
+ */
+function radar(
+  pdf: jsPDF,
+  scores: Score[],
+  cx: number,
+  cy: number,
+  radius: number
+): number {
+  const n = scores.length;
+  // Under three axes a polygon degenerates to a line or a point.
+  if (n < 3) return cy;
+
+  const at = (i: number, value: number, r = radius) => {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+    const d = (r * value) / 5;
+    return { x: cx + d * Math.cos(angle), y: cy + d * Math.sin(angle) };
+  };
+
+  pdf.setDrawColor(...LINE);
+  pdf.setLineWidth(0.2);
+  for (let ring = 1; ring <= 5; ring++) {
+    pdf.circle(cx, cy, (radius * ring) / 5, "S");
+  }
+  for (let i = 0; i < n; i++) {
+    const end = at(i, 5);
+    pdf.line(cx, cy, end.x, end.y);
+  }
+
+  // lines() takes deltas from a start point, not absolute coordinates.
+  const points = scores.map((s, i) => at(i, s.score));
+  const deltas: [number, number][] = [];
+  for (let i = 1; i < points.length; i++) {
+    deltas.push([points[i].x - points[i - 1].x, points[i].y - points[i - 1].y]);
+  }
+  deltas.push([points[0].x - points[n - 1].x, points[0].y - points[n - 1].y]);
+
+  pdf.setFillColor(224, 222, 250);
+  pdf.setDrawColor(...ACCENT);
+  pdf.setLineWidth(0.5);
+  pdf.lines(deltas, points[0].x, points[0].y, [1, 1], "FD");
+
+  pdf.setFillColor(...ACCENT);
+  for (const p of points) pdf.circle(p.x, p.y, 0.8, "F");
+
+  pdf.setFontSize(6);
+  pdf.setTextColor(...MUTED);
+  for (let i = 0; i < n; i++) {
+    const label = at(i, 5, radius + 7);
+    const word = scores[i].label.split(/\s+/)[0];
+    pdf.text(word, label.x, label.y + (label.y < cy ? -0.5 : 2), { align: "center" });
+  }
+
+  return cy + radius + 12;
+}
+
 /** Draws the Trainium wordmark. Set as vector text rather than an image so it
  *  stays crisp at any zoom and adds nothing to the file size. */
 function wordmark(pdf: jsPDF, x: number, y: number) {
@@ -87,8 +150,33 @@ export function downloadReportPdf(
     y += lines.length * 5.2;
   }
 
-  // ---- scores at a glance ---------------------------------------------
+  // ---- coverage, measured rather than scored ---------------------------
+  if (report.coverage && report.coverage.slides_total > 0) {
+    const c = report.coverage;
+    y += 7;
+    pdf.setFontSize(8);
+    pdf.setTextColor(...MUTED);
+    pdf.text(
+      `Material covered: ${Math.round(c.fraction * 100)}% (reached slide ` +
+        `${c.furthest_slide} of ${c.slides_total})     ` +
+        `Time used: ${Math.round(c.elapsed_min)} of ${c.planned_min} min`,
+      MARGIN,
+      y
+    );
+    y += 2;
+  }
+
+  // ---- profile, highest scoring first ----------------------------------
   const assessed = [...(report.scores ?? []), ...(report.video_scores ?? [])];
+  const ranked = [...assessed].sort((a, b) => b.score - a.score);
+  if (ranked.length >= 3) {
+    // Centred on the right so the chart and the table below it do not fight
+    // for the same column.
+    const after = radar(pdf, ranked, pageW - MARGIN - 32, y + 34, 26);
+    y = after;
+  }
+
+  // ---- scores at a glance ---------------------------------------------
   if (assessed.length) {
     y += 8;
     autoTable(pdf, {

@@ -21,13 +21,15 @@ export const SessionPlayer = forwardRef<HTMLVideoElement, { simulationId: string
     return (
       <figure className="m-0">
         <div className="relative">
+          {/* 16:9, so the box is the right shape before metadata loads and
+              the column does not jump when it does. */}
           <video
             ref={ref}
             src={src}
             controls
             preload="metadata"
             playsInline
-            className="w-full rounded-lg bg-slate-900"
+            className="aspect-video w-full rounded-lg bg-slate-900 object-cover"
           />
           {/* Top corner, clear of the browser's own controls along the
               bottom edge. */}

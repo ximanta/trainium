@@ -336,7 +336,7 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
       {/* Evidence beside the recording rather than below it. The video sticks
           while this column scrolls, so clicking a timecode plays the moment
           without scrolling back up to find the player. */}
-      <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
         <div>
       {spoken.length > 0 && (
         <section>
