@@ -46,24 +46,46 @@ competency being done well (positive) or poorly, and one sentence on why.
 
 Rules:
 - Quote verbatim from the segment. Never paraphrase or invent wording.
-- Only cite the trainer's own turns, not what the learners said, except where \
-a learner's reaction is itself the evidence (for example a learner saying they \
-are still confused after an explanation).
+- Usually cite the trainer's own turns, since it is the trainer being
+assessed. Cite a learner's turn when their reaction is itself the evidence: a
+learner saying they are still confused after an explanation, or a learner
+asking a question unprompted, which is what engagement looks like from the
+outside. A competency about how learners behaved cannot be evidenced from the
+trainer's words alone.
 - A moment can only evidence a competency in the list above.
+- Look for both. A moment where the trainer did something poorly is evidence \
+just as much as one where they did it well, and a competency only ever \
+evidenced by good moments produces a report that flatters. Mark each with \
+positive true or false.
 - Prefer a smaller number of clear, specific moments over many weak ones. If a \
 competency genuinely has no evidence in this transcript, return nothing for it \
-rather than stretching to fill it.
+rather than stretching to fill it. "Nothing of this kind happened at all", for \
+example no demo was run, is an absence; "it happened and went badly" is \
+evidence, so cite it.
 - Do not judge delivery, body language or tone of voice: this is a transcript, \
 none of that is visible here.
 """
 
 
 def _format_competencies(competencies: list[dict]) -> str:
+    """Show both ends of each scale, not just the top.
+
+    Showing only what strong looks like meant a competency the trainer did
+    badly produced no evidence at all, because nothing in the transcript
+    matched the description of doing it well. It then landed in undetermined,
+    reading as "we could not judge this" when the truth was "this went poorly".
+    Weak evidence is evidence.
+    """
     lines = []
     for c in competencies:
         anchors = c.get("anchors", {})
         best = anchors.get(str(c.get("scale_max", 5)), "")
-        lines.append(f"- {c['key']} ({c['label']}): strong looks like, {best}")
+        worst = anchors.get(str(c.get("scale_min", 1)), "")
+        lines.append(
+            f"- {c['key']} ({c['label']}):\n"
+            f"    done well: {best}\n"
+            f"    done poorly: {worst}"
+        )
     return "\n".join(lines)
 
 

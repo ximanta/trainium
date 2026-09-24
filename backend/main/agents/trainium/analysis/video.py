@@ -54,6 +54,13 @@ off for most of the recording, say so by returning no moments rather than \
 guessing.
 - Judge only delivery and presence. Ignore what is being said: the words are \
 assessed separately from the transcript.
+- Work through every competency in the list, not just the ones that stand \
+out. Each is visible in any recording where the trainer is in frame: whether \
+they look at the camera or at their notes, how they hold themselves, what \
+their hands do, whether their face changes with the material. An absence is \
+itself observable and worth reporting, for example a face that stays flat \
+throughout or hands that never appear. Only leave a competency out when the \
+recording genuinely cannot show it.
 """
 
 

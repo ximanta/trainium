@@ -110,6 +110,19 @@ async def _stream_persona_tts(
             },
         },
     )
+    # Recorded here rather than after the audio finishes. Barge-in cancels
+    # this task mid-stream, and a CancelledError raised inside the TTS loop
+    # unwound past the write at the end, so every interrupted persona vanished
+    # from the transcript. Three of eight utterances were lost that way in a
+    # real session, and the analysis then scored a conversation that had holes
+    # in it.
+    await append_transcript_segment(
+        simulation_id,
+        speaker=decision.persona_id,
+        ts_start=ts_start,
+        ts_end=ts_start,
+        text=decision.text,
+    )
     await append_event(
         simulation_id,
         ts_start,
@@ -153,13 +166,6 @@ async def _stream_persona_tts(
                 seq += 1
 
     await _ws_send_json(websocket, {"type": "persona_done", "data": {"utterance_id": utterance_id}})
-    await append_transcript_segment(
-        simulation_id,
-        speaker=decision.persona_id,
-        ts_start=ts_start,
-        ts_end=ts_start,  # persona utterance duration is not tracked client-side; refine when recording lands (M4)
-        text=decision.text,
-    )
 
 
 def configure_routes_ws_session(app: FastAPI) -> None:
