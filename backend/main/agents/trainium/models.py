@@ -174,22 +174,48 @@ TRAINER_ADDRESSES = frozenset(("sir", "maam", "name"))
 
 
 def describe_trainer(name: str, address: str) -> str:
-    """One line telling the Director how personas should address the trainer."""
+    """How personas address the trainer, written for the Director.
+
+    The hard part is not which form to use but how often. Telling a model to
+    use a name "sparingly" does not work: a real session came back with almost
+    every line ending in the trainer's name, which reads as a form letter
+    rather than a classroom. So the instruction leads with the frequency, gives
+    a concrete ceiling, and says plainly that most lines should carry no
+    address at all, which is how people actually speak.
+    """
     name = (name or "").strip()
+    first = name.split()[0] if name else ""
+
+    # Most lines address nobody. This is stated first and in absolute terms
+    # because it is the rule that keeps being broken.
+    frequency = (
+        "Most lines should not address the trainer at all. People in a real "
+        "room say a name when they want attention, when answering after "
+        "someone else, or when thanking someone, not in every sentence. At "
+        "most one line in four should name them, and never two in a row."
+    )
+
     if address == "sir":
-        return f"{name or 'The trainer'}, addressed as Sir." if name else "Addressed as Sir."
-    if address == "maam":
-        return f"{name or 'The trainer'}, addressed as Ma'am." if name else "Addressed as Ma'am."
-    if name:
-        # First name only: a learner saying "Yeah Sneha Patel" reads as a form
-        # letter, where "Sneha" is what a person would actually say.
-        first = name.split()[0]
-        return (
-            f"{name}, addressed by first name as {first}, with no Sir or Ma'am. "
-            f"Use the name sparingly, the way people do in speech, not in every line."
+        forms = f'"Sir" is the usual form' + (
+            f', with "{first}" occasionally instead' if first else ""
         )
-    # Nothing configured: no honorific is safer than guessing one.
-    return "Name unknown. Address them directly without any honorific, never Sir or Ma'am."
+    elif address == "maam":
+        forms = f'"Ma\'am" is the usual form' + (
+            f', with "{first}" occasionally instead' if first else ""
+        )
+    elif first:
+        forms = f'"{first}" is the form to use, never the full name'
+    else:
+        # Nothing configured. No honorific is safer than guessing one, since
+        # guessing wrong misgenders someone in front of a class.
+        return (
+            f"The trainer's name is not known. Never use Sir or Ma'am, and "
+            f"never invent a name. Address them with no form of address at "
+            f"all. {frequency}"
+        )
+
+    who = f"{name}. " if name else ""
+    return f"{who}{forms}. {frequency}"
 
 
 class Simulation(BaseModel):
