@@ -225,16 +225,7 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
       </div>
 
       {report.summary && (
-        <p className="mt-6 max-w-[64ch] leading-relaxed text-slate-700">{report.summary}</p>
-      )}
-
-      {/* Above the analysis: watching thirty seconds of yourself teaching
-          lands harder than reading a score, and the timecodes below seek
-          into it. */}
-      {report.recording && (
-        <div className="mt-6">
-          <SessionPlayer ref={videoRef} simulationId={simulationId} />
-        </div>
+        <p className="mt-6 max-w-[70ch] leading-relaxed text-slate-700">{report.summary}</p>
       )}
 
       {/* Profile: the whole assessed picture before any detail. */}
@@ -299,8 +290,13 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
         </div>
       )}
 
+      {/* Evidence beside the recording rather than below it. The video sticks
+          while this column scrolls, so clicking a timecode plays the moment
+          without scrolling back up to find the player. */}
+      <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div>
       {spoken.length > 0 && (
-        <section className="mt-10">
+        <section>
           <div className="flex items-baseline justify-between gap-3 border-b pb-2">
             <h2 className="text-base font-semibold">How you taught</h2>
             <span className="font-mono text-xs text-muted-foreground">
@@ -346,6 +342,14 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
           </p>
         )}
       </section>
+        </div>
+
+        {report.recording && (
+          <aside className="lg:sticky lg:top-6 lg:self-start">
+            <SessionPlayer ref={videoRef} simulationId={simulationId} />
+          </aside>
+        )}
+      </div>
 
       {/* Named, not scored. The reasons are stored with the report, so an admin
           reviewing a certification can see what was skipped and why. */}

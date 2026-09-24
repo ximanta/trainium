@@ -10,7 +10,9 @@ export default function TrainiumReportPage({
     <div className="min-h-screen bg-white">
       <AppHeader crumbs={[{ label: "Session report" }]} />
       {/* The report renders its own masthead, so the page is only a frame. */}
-      <main className="mx-auto max-w-3xl px-6 py-8">
+      {/* Wider than a reading column: the report is scanned against a video
+          beside it, not read top to bottom like prose. */}
+      <main className="mx-auto max-w-6xl px-6 py-8">
         <SessionReport simulationId={params.id} />
       </main>
     </div>

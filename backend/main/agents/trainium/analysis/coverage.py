@@ -51,13 +51,27 @@ class Coverage:
         pct = round(self.fraction * 100)
         target = round(settings.trainium_coverage_threshold * 100)
         used = round(self.elapsed_min / self.planned_min * 100) if self.planned_min else 0
-        verdict = "met" if self.met_threshold else "short of"
+
+        if self.met_threshold:
+            verdict = f"which meets the {target}% expected"
+        elif self.fraction < settings.trainium_coverage_threshold / 2:
+            # Far short, not marginally short. Said plainly, because a model
+            # given only "below target" will treat covering a tenth of the
+            # deck as a minor pacing note rather than the defining fact of
+            # the session.
+            verdict = (
+                f"far short of the {target}% expected. Most of the planned material "
+                "was never reached, which is the most significant fact about this "
+                "session"
+            )
+        else:
+            verdict = f"short of the {target}% expected"
+
         return (
             f"The session ran {self.elapsed_min:.0f} of {self.planned_min} planned "
             f"minutes ({used}% of the time allowed). It reached slide "
-            f"{self.furthest_slide} of {self.slides_total}, which is {pct}% of the deck "
-            f"and {verdict} the {target}% expected. "
-            f"{self.slides_reached} slides were actually discussed."
+            f"{self.furthest_slide} of {self.slides_total}, which is {pct}% of the deck, "
+            f"{verdict}. {self.slides_reached} slides were actually discussed."
         )
 
 

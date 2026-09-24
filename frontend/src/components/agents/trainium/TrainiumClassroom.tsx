@@ -320,7 +320,13 @@ export function TrainiumClassroom({
       setCameraOn(true);
       // Recording starts with the camera, so the whole session is captured
       // rather than whatever remained after the trainer thought to press it.
-      startRecording(camStream);
+      //
+      // Camera and mic are separate streams, so they are combined here: a
+      // recorder given only the camera produces a silent file, which is what
+      // the first real session produced.
+      startRecording(
+        new MediaStream([...camStream.getVideoTracks(), ...micStream.getAudioTracks()])
+      );
     } catch {
       setCameraOn(false);
     }

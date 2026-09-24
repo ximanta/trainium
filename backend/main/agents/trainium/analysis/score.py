@@ -54,8 +54,20 @@ The evidence, grouped by competency:
 {evidence}
 
 Score each competency in the rubric against its anchors. Then write a short \
-summary of the session, two or three specific strengths, and two or three \
-specific things to improve.
+summary of the session, what genuinely worked, and what to work on.
+
+Write the summary last, after you have scored everything, and let the scores \
+decide its tone. A session that scored badly must read as a session that went \
+badly. Lead with what dominated it, not with the most flattering thing you can \
+find: a trainer who explained one concept well but covered a fraction of the \
+material had a poor session, and a summary that opens on the explanation is \
+misleading. Be direct and factual, never harsh, and never soften a real \
+problem into a trailing clause.
+
+Strengths are optional. List only things that actually happened and actually \
+helped, at most three. If the session has none worth naming, return an empty \
+list rather than inventing one: manufactured praise in a bad report teaches \
+the trainer nothing and costs you their trust in the rest of it.
 
 Rules:
 - Score only from the evidence and the session facts above. You have not seen \
