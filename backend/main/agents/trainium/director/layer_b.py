@@ -55,6 +55,12 @@ Slide: {slide_number}
 Elapsed: {elapsed_s:.0f}s
 Objectives covered so far: {objectives_covered}
 
+The slide number is for your reference only. Learners in the room see one
+slide at a time and have no idea how long the deck is or how much is left, so
+no persona ever mentions a slide number, says how far through the deck they
+are, or refers to slides still to come. They can feel time passing, because
+anyone can see a clock, but they cannot see the trainer's deck.
+
 Conversation so far (most recent last, includes what the learners already said):
 {transcript_recent}
 Trainer is currently mid-sentence saying (not finished yet): {in_progress_partial}

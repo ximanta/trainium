@@ -6,12 +6,28 @@ winds down at the end. Without this the Director reacts only to the last few
 turns, so a persona will ask a deep mid-lesson question thirty seconds in and
 open a brand new topic with two minutes left.
 
-Derived, never configured or inferred by a model. Everything needed is already
-measured: how long the session has run against its allotted time, and how far
-through the deck it has reached. Both are used, whichever is further along,
-because either alone misreads a common case: a trainer who races the deck is
-near the end regardless of the clock, and one who lingers on slide three is
-not closing just because time is short.
+Derived, never configured or inferred by a model, from two signals used
+together: elapsed time against the allotted duration, and how far through the
+deck the trainer has reached.
+
+The two are not equivalent, and the difference matters. Learners in a real
+room cannot see the deck: they see one slide at a time and have no idea
+whether it is a third of the way through or a tenth. What they can see is the
+clock. So time is the signal they genuinely have.
+
+The deck still belongs here, but for a narrower reason than it first appears.
+A trainer who has raced to slide 22 of 25 in ten minutes gives it away through
+pace and content, wrapping topics up and saying "and finally", which learners
+do notice. That is the case the deck signal is for, and it only runs one way:
+being far through the deck can bring the closing phase forward, but being
+early in the deck never holds it back, because the clock keeps running
+whatever the trainer has covered. Taking the further along of the two is what
+encodes that.
+
+What the deck must never become is knowledge a learner could not have. See
+layer_b's prompt: the Director is told the slide number so personas can talk
+about what is on screen, and told explicitly not to reason aloud about how
+many slides remain.
 """
 
 from dataclasses import dataclass
@@ -73,10 +89,13 @@ _GUIDANCE: dict[Phase, str] = {
         "not clear, connecting a point back to something covered earlier."
     ),
     "closing": (
-        "The session is near its end. A learner would not open a new topic "
-        "now. What fits is tying off: asking about something from earlier that "
-        "still does not sit right, checking a practical detail, or asking what "
-        "to do next. Keep it brief, as people do when time is nearly up."
+        "The session is near its end, and the learners can tell: time is "
+        "nearly up and the trainer is wrapping topics off rather than opening "
+        "them. A learner would not start a new topic now. What fits is tying "
+        "off: asking about something from earlier that still does not sit "
+        "right, checking a practical detail, or asking what to do next. Keep "
+        "it brief, as people do when time is nearly up. They sense this from "
+        "the clock and the trainer's pace, never from knowing the deck."
     ),
 }
 
