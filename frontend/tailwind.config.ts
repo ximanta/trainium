@@ -16,6 +16,18 @@ const config: Config = {
       },
     },
     extend: {
+      keyframes: {
+        // The active-speaker glow on a video tile. A shadow rather than
+        // opacity, so the picture itself never dims the way animate-pulse
+        // would.
+        "speaking-glow": {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(74, 222, 128, 0.7)" },
+          "50%": { boxShadow: "0 0 0 5px rgba(74, 222, 128, 0)" },
+        },
+      },
+      animation: {
+        "speaking-glow": "speaking-glow 1.6s ease-in-out infinite",
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

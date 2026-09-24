@@ -137,7 +137,10 @@ function VideoTile({
   return (
     <div
       className={`relative aspect-video w-full shrink-0 overflow-hidden rounded-lg bg-slate-800 ${
-        speaking ? "ring-2 ring-green-500" : ""
+        // Pulsing rather than a static ring, which is what Teams and Zoom do:
+        // a still outline is easy to miss in a column of tiles, and the whole
+        // point is knowing who is talking without reading names.
+        speaking ? "ring-2 ring-green-400 animate-speaking-glow" : ""
       }`}
     >
       {children ??
@@ -264,6 +267,16 @@ export function TrainiumClassroom({
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcript, pendingSpeaker]);
+
+  // Attach the camera stream once the tile exists. join() runs while the
+  // loading screen is up, so the video element is not mounted yet and
+  // assigning srcObject there silently does nothing, leaving the trainer
+  // looking at an empty tile for the whole session.
+  useEffect(() => {
+    if (joined && cameraVideoRef.current && cameraStreamRef.current) {
+      cameraVideoRef.current.srcObject = cameraStreamRef.current;
+    }
+  }, [joined, cameraOn]);
 
   // Arriving from the green room: connect straight away. Guarded by a ref
   // because React runs effects twice in development and two join() calls would
@@ -730,6 +743,27 @@ export function TrainiumClassroom({
             </span>
           )}
         </div>
+
+        {/* Raised hands surfaced at the top of the rail rather than only as a
+            count. With eight learners the person waiting is usually below the
+            fold, so a number alone means scrolling to find out who. */}
+        {raisedHands.length > 0 && (
+          <div className="shrink-0 space-y-1 border-b bg-amber-50 p-2">
+            {raisedHands.map((p) => (
+              <button
+                key={p.personaId}
+                onClick={() => send("raise_hand_ack", { persona_id: p.personaId })}
+                className="flex w-full cursor-pointer items-center gap-1.5 rounded-md bg-amber-100 px-2 py-1.5 text-left text-xs font-medium text-amber-900 transition-colors hover:bg-amber-200"
+              >
+                <Hand className="h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{p.displayName}</span>
+                <span className="shrink-0 text-[10px] uppercase tracking-wide opacity-70">
+                  call on
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex-1 space-y-2 overflow-y-auto p-2">
           <VideoTile name="You" personaId="trainer" speaking={false} muted={selfMuted}>

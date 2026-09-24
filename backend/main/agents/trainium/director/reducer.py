@@ -42,6 +42,36 @@ _OPEN_PHRASES = (
 )
 
 
+# Questions put to the room rather than to one person. A trainer checking
+# comprehension is inviting anyone to answer, so the floor must stay open.
+_OPEN_TO_ROOM = (
+    "anybody",
+    "anyone",
+    "any questions",
+    "any doubts",
+    "everyone",
+    "everybody",
+    "all clear",
+    "is this clear",
+    "is that clear",
+    "am i clear",
+    "am i audible",
+    "make sense",
+    "makes sense",
+    "understood",
+    "following me",
+    "with me",
+    "so far",
+    "till now",
+    "questions on this",
+)
+
+
+def _is_open_to_room(utterance: str) -> bool:
+    text = utterance.lower()
+    return any(p in text for p in _OPEN_TO_ROOM)
+
+
 def apply_direct_address(
     state: SessionState, utterance: str, last_persona_speaker: str | None = None
 ) -> str | None:
@@ -70,9 +100,16 @@ def apply_direct_address(
             state.awaiting_reply_from = pid
             return pid
 
-    # An unnamed question, right after someone spoke, belongs to them.
+    # An unnamed question right after someone spoke usually belongs to them,
+    # but only if it is actually a follow-up. "Anybody have questions?" and
+    # "is this clear?" are addressed to the whole room, and treating them as
+    # follow-ups handed the floor to the same learner every single turn: one
+    # real session had Priya answering eleven times in a row while seven other
+    # learners never spoke.
     if last_persona_speaker and "?" in utterance:
-        if last_persona_speaker in state.persona_states:
+        if last_persona_speaker in state.persona_states and not _is_open_to_room(
+            utterance
+        ):
             state.awaiting_reply_from = last_persona_speaker
             return last_persona_speaker
 
