@@ -223,10 +223,15 @@ DEFAULT_RUBRIC_SEED = {
             "label": "Concept Explanation",
             "scale_min": 1,
             "scale_max": 5,
+            # Anchors describe the session's pattern, not a single good
+            # moment. The old wording said "at least one concrete analogy",
+            # which a trainer who explained one concept well and skipped nine
+            # others satisfied literally, scoring 5/5 for covering a tenth of
+            # the material.
             "anchors": {
-                "1": "Explanations are inaccurate or missing.",
-                "3": "Explanations are accurate but lack concrete examples.",
-                "5": "Explanations are accurate and use at least one concrete analogy or example.",
+                "1": "Concepts are explained inaccurately, or most were never explained at all.",
+                "3": "The concepts that were covered are explained accurately, but plainly, or a substantial part of the material was left unexplained.",
+                "5": "Concepts are explained accurately and made concrete with analogies or examples, consistently across the material the session set out to cover.",
             },
         },
         {
@@ -403,7 +408,13 @@ async def seed_reference_data() -> None:
             {"id": scenario["id"]}, {"$setOnInsert": scenario}, upsert=True
         )
     await rubrics_collection.update_one(
-        {"id": DEFAULT_RUBRIC_SEED["id"]}, {"$setOnInsert": DEFAULT_RUBRIC_SEED}, upsert=True
+        # Refreshed rather than inserted once, so anchor wording fixes reach
+        # databases seeded by an earlier version. Safe because this is the
+        # system default (org_id None): an admin editing a rubric creates
+        # their own document, which this never touches.
+        {"id": DEFAULT_RUBRIC_SEED["id"], "org_id": None},
+        {"$set": DEFAULT_RUBRIC_SEED},
+        upsert=True,
     )
     await rubrics_collection.update_one(
         {"id": VIDEO_RUBRIC_SEED["id"]}, {"$set": VIDEO_RUBRIC_SEED}, upsert=True
