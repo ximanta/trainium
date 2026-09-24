@@ -35,8 +35,15 @@ export type ReportSession = {
   persona_ids?: string[];
 };
 
+/** Present only when a camera track was stored for the session. */
+export type ReportRecording = {
+  duration_s?: number;
+  size_bytes?: number;
+};
+
 export type Report = {
   session?: ReportSession;
+  recording?: ReportRecording | null;
   status: "pending" | "running" | "complete" | "failed";
   error?: string;
   summary?: string;

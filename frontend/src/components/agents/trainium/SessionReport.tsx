@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Download, Video } from "lucide-react";
 
 import { api } from "@/api/axios";
 import { Button } from "@/components/ui/button";
 import { ScoreRadar } from "@/components/agents/trainium/ScoreRadar";
+import { SessionPlayer } from "@/components/agents/trainium/SessionPlayer";
 import { downloadReportPdf } from "@/components/agents/trainium/reportPdf";
 import type { Report, Score } from "@/components/agents/trainium/reportTypes";
 
@@ -40,7 +41,13 @@ function Pips({ score }: { score: number }) {
 /** One criterion: score, reasoning, and the moments it rests on. Evidence is
  *  always visible rather than behind a toggle, so the number is read together
  *  with its basis. */
-function Criterion({ score }: { score: Score }) {
+function Criterion({
+  score,
+  onSeek,
+}: {
+  score: Score;
+  onSeek?: (seconds: number) => void;
+}) {
   const t = tone(score.score);
   return (
     <div className="border-b py-4 last:border-b-0">
@@ -66,7 +73,18 @@ function Criterion({ score }: { score: Score }) {
                 e.positive ? "border-green-400" : "border-amber-400"
               }`}
             >
-              <span className="font-mono text-muted-foreground">{clock(e.ts_start)}</span>{" "}
+              {onSeek ? (
+                <button
+                  type="button"
+                  onClick={() => onSeek(e.ts_start)}
+                  className="cursor-pointer font-mono text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors hover:text-indigo-700"
+                  aria-label={`Play the session from ${clock(e.ts_start)}`}
+                >
+                  {clock(e.ts_start)}
+                </button>
+              ) : (
+                <span className="font-mono text-muted-foreground">{clock(e.ts_start)}</span>
+              )}{" "}
               <span className="text-slate-700">
                 {e.source === "video" ? e.quote : `"${e.quote}"`}
               </span>
@@ -81,6 +99,20 @@ function Criterion({ score }: { score: Score }) {
 export function SessionReport({ simulationId }: { simulationId: string }) {
   const [report, setReport] = useState<Report | null>(null);
   const [missing, setMissing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  /** Jump the recording to a moment and play it. Scrolls the player into view
+   *  first, since the timecode clicked may be far down the page. */
+  function seekTo(seconds: number) {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = seconds;
+    video.scrollIntoView({ behavior: "smooth", block: "center" });
+    void video.play().catch(() => {
+      // Autoplay can be refused; the seek still happened, so the trainer can
+      // press play themselves.
+    });
+  }
 
   useEffect(() => {
     let stop = false;
@@ -196,6 +228,15 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
         <p className="mt-6 max-w-[64ch] leading-relaxed text-slate-700">{report.summary}</p>
       )}
 
+      {/* Above the analysis: watching thirty seconds of yourself teaching
+          lands harder than reading a score, and the timecodes below seek
+          into it. */}
+      {report.recording && (
+        <div className="mt-6">
+          <SessionPlayer ref={videoRef} simulationId={simulationId} />
+        </div>
+      )}
+
       {/* Profile: the whole assessed picture before any detail. */}
       {ranked.length >= 3 && (
         <section className="mt-10">
@@ -268,7 +309,11 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
           </div>
           <div className="mt-1">
             {spoken.map((s) => (
-              <Criterion key={s.competency_key} score={s} />
+              <Criterion
+                key={s.competency_key}
+                score={s}
+                onSeek={report.recording ? seekTo : undefined}
+              />
             ))}
           </div>
         </section>
@@ -287,7 +332,11 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
         {delivery.length > 0 ? (
           <div className="mt-1">
             {delivery.map((s) => (
-              <Criterion key={s.competency_key} score={s} />
+              <Criterion
+                key={s.competency_key}
+                score={s}
+                onSeek={report.recording ? seekTo : undefined}
+              />
             ))}
           </div>
         ) : (

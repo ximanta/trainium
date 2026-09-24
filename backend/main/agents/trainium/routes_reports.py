@@ -1,8 +1,10 @@
 """Recording upload and report retrieval."""
 
+import re
 import uuid
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 
 from main.agents.trainium.analysis.pipeline import schedule_analysis
 from main.agents.trainium.auth import User, get_current_user
@@ -11,7 +13,7 @@ from main.agents.trainium.db_manager import (
     reports_collection,
     simulations_collection,
 )
-from main.agents.trainium.storage import upload_file
+from main.agents.trainium.storage import file_size, open_range, upload_file
 
 
 def configure_routes_reports(app: FastAPI) -> None:
@@ -80,6 +82,69 @@ def configure_routes_reports(app: FastAPI) -> None:
         schedule_analysis(simulation_id)
         return {"started": True}
 
+    @app.get("/trainium/sessions/{simulation_id}/recording")
+    async def stream_recording(simulation_id: str, request: Request):
+        """Stream the session recording, honouring Range requests.
+
+        No auth dependency, deliberately: a <video> element cannot attach the
+        role header the rest of the API uses, and Range requests come from the
+        browser's media stack rather than from fetch. The unguessable
+        simulation id is what protects it, the same reasoning as the join
+        token. Revisit when Auth0 lands and signed URLs become available.
+        """
+        recording = await recordings_collection.find_one(
+            {"simulation_id": simulation_id, "track": "camera"}, {"_id": 0}
+        )
+        if recording is None:
+            raise HTTPException(status_code=404, detail="No recording for this session")
+
+        file_id = recording["file_id"]
+        content_type = recording.get("content_type", "video/webm")
+        total = await file_size(file_id)
+
+        range_header = request.headers.get("range")
+        if not range_header:
+            # No range asked for: send the lot, but still advertise that
+            # ranges are supported so the player knows it can seek.
+            return StreamingResponse(
+                open_range(file_id, 0, total),
+                media_type=content_type,
+                headers={
+                    "Content-Length": str(total),
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "private, max-age=3600",
+                },
+            )
+
+        # "bytes=START-END", either end optional.
+        match = re.match(r"bytes=(\d*)-(\d*)", range_header)
+        if not match:
+            raise HTTPException(status_code=400, detail="Malformed Range header")
+        raw_start, raw_end = match.groups()
+        start = int(raw_start) if raw_start else 0
+        end = int(raw_end) if raw_end else total - 1
+        end = min(end, total - 1)
+
+        if start > end or start >= total:
+            raise HTTPException(
+                status_code=416,
+                detail="Range not satisfiable",
+                headers={"Content-Range": f"bytes */{total}"},
+            )
+
+        length = end - start + 1
+        return StreamingResponse(
+            open_range(file_id, start, length),
+            status_code=206,
+            media_type=content_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{total}",
+                "Content-Length": str(length),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "private, max-age=3600",
+            },
+        )
+
     @app.get("/trainium/sessions/{simulation_id}/report")
     async def get_report(simulation_id: str, user: User = Depends(get_current_user)):
         """The report for a session, or its progress.
@@ -101,4 +166,12 @@ def configure_routes_reports(app: FastAPI) -> None:
             {"_id": 0, "title": 1, "trainer_name": 1, "duration_min": 1, "persona_ids": 1},
         )
         report["session"] = simulation or {}
+
+        # Whether there is anything to play. Sent as a flag rather than a URL
+        # so the client never renders a player over a 404.
+        recording = await recordings_collection.find_one(
+            {"simulation_id": simulation_id, "track": "camera"},
+            {"_id": 0, "duration_s": 1, "size_bytes": 1},
+        )
+        report["recording"] = recording or None
         return report
