@@ -5,8 +5,15 @@ from main.agents.trainium.director.layer_b import DirectorDecision, decide_and_s
 from main.agents.trainium.director.policy import DirectorPolicy
 from main.agents.trainium.director.state import SessionState
 
-SPECULATION_INTERVAL_S = 4.0
-STALE_AFTER_S = 6.0  # if the cached decision is older than this, don't trust it
+# Tuned to the Layer B latency actually measured, 3-6s, not the 500ms the
+# architecture doc assumed. A real session logged cache=0/11: speculation ran,
+# produced a decision, and it expired before the trainer stopped talking,
+# because the interval plus Layer B's own runtime exceeded the staleness
+# window every time. Speculate more often and trust the result for longer;
+# the turn-count guard below is what actually keeps a stale line out, and it
+# is exact rather than a guess about elapsed time.
+SPECULATION_INTERVAL_S = 2.0
+STALE_AFTER_S = 20.0
 
 
 class SpeculativeDirector:

@@ -26,7 +26,12 @@ class DirectorPolicy:
     """
 
     min_gap_s: float = 45.0
-    max_interventions_per_10min: int = 6
+    # Was 6, which is one learner every 100 seconds. A real session hit the
+    # limit after nine minutes and then went permanently silent while the
+    # trainer kept asking "anyone?" and "Arjun can you speak up?". The ceiling
+    # exists to stop a runaway Director, not to pace a class, so it sits well
+    # above what a lively room actually uses.
+    max_interventions_per_10min: int = 15
     per_persona_cooldown_s: float = 180.0
     speak_probability_by_type: dict = field(default_factory=lambda: dict(SPEAK_PROBABILITY_BY_TYPE))
     objective_gate: bool = True
@@ -36,14 +41,18 @@ class DirectorPolicy:
     def turn_budget(self, duration_s: float) -> int:
         """Hard ceiling on persona turns for a session of this length.
 
-        Derived from the intended pace rather than picked: the policy already
-        targets `max_interventions_per_10min`, so the budget is that rate plus
-        half again, which absorbs the hard triggers (open questions, long
-        pauses) that legitimately bypass the probability roll without letting
-        a misbehaving Director spend without limit.
+        Deliberately not derived from `max_interventions_per_10min`: that is a
+        pacing valve set generously so a lively class is never silenced, while
+        this is a spend ceiling. Tying them together meant raising the pacing
+        limit tripled the budget, which is the opposite of what a cost control
+        should do. Eight turns per ten minutes is roughly twice what a real
+        session used, so it never binds in practice but still caps a runaway.
+
+        Sized against a measured session rather than guessed: a real class ran
+        at 11.8 turns per ten minutes, so the ceiling sits at 18, comfortably
+        above an active room and far below anything that could run up a bill.
         """
-        expected = (duration_s / 600.0) * self.max_interventions_per_10min
-        return max(10, int(expected * 1.5))
+        return max(10, int((duration_s / 600.0) * 18))
 
     def should_open_gate(
         self,
