@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trainium Session Report</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper:#FAF9F7; --card:#FFFFFF; --ink:#181B22; --ink-soft:#4A5160;
+    --muted:#757E8D; --line:#E7E4DF; --hair:#F0EEEA;
+    --accent:#4338CA; --accent-soft:#EDECFB;
+    --good:#15703F; --good-soft:#E9F4ED; --good-line:#8BC5A4;
+    --warn:#A2570A; --warn-soft:#FBF1E3; --warn-line:#E0A961;
+    --track:#EAE7E2;
+    --display:"Sora",ui-sans-serif,system-ui,sans-serif;
+    --sans:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:#101319; --card:#191D25; --ink:#E9E7E4; --ink-soft:#B6BCC7;
+      --muted:#8E96A3; --line:#2A2F39; --hair:#222730;
+      --accent:#9D97FA; --accent-soft:#222338;
+      --good:#5FD98D; --good-soft:#15251B; --good-line:#2F6B45;
+      --warn:#F0B44E; --warn-soft:#271E11; --warn-line:#7A5A22;
+      --track:#2A2F39;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#101319; --card:#191D25; --ink:#E9E7E4; --ink-soft:#B6BCC7;
+    --muted:#8E96A3; --line:#2A2F39; --hair:#222730;
+    --accent:#9D97FA; --accent-soft:#222338;
+    --good:#5FD98D; --good-soft:#15251B; --good-line:#2F6B45;
+    --warn:#F0B44E; --warn-soft:#271E11; --warn-line:#7A5A22;
+    --track:#2A2F39;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);
+       font-size:15px;line-height:1.55;margin:0;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{margin:0;text-wrap:balance;font-family:var(--display);font-weight:600;letter-spacing:-0.015em}
+  .page{max-width:820px;margin:0 auto;padding:36px 20px 96px}
+
+  /* header */
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap}
+  .eyebrow{font-family:var(--mono);font-size:0.68rem;letter-spacing:0.1em;
+           text-transform:uppercase;color:var(--accent)}
+  h1{font-size:1.65rem;margin-top:7px}
+  .meta{font-family:var(--mono);font-size:0.73rem;color:var(--muted);margin-top:7px}
+  .meta span+span::before{content:"·";margin:0 7px;color:var(--line)}
+  .pdf{display:inline-flex;align-items:center;gap:7px;font-size:0.8rem;font-weight:500;
+       border:1px solid var(--line);background:var(--card);color:var(--ink-soft);
+       border-radius:7px;padding:8px 14px;cursor:pointer;white-space:nowrap;
+       transition:border-color .18s,color .18s}
+  .pdf:hover{border-color:var(--accent);color:var(--accent)}
+  .pdf svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.7;
+           stroke-linecap:round;stroke-linejoin:round}
+
+  .verdict{margin-top:22px;font-size:1.02rem;line-height:1.62;color:var(--ink-soft);max-width:64ch}
+
+  /* section chrome */
+  section{margin-top:40px}
+  .shead{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+         padding-bottom:9px;border-bottom:1px solid var(--line)}
+  .shead h2{font-size:1rem}
+  .shead .from{font-family:var(--mono);font-size:0.7rem;color:var(--muted)}
+
+  /* ---------- radar ---------- */
+  .profile{display:flex;gap:30px;align-items:center;margin-top:20px;flex-wrap:wrap}
+  .profile svg{flex:0 0 auto;max-width:100%}
+  .axes{flex:1 1 250px;min-width:0;display:flex;flex-direction:column}
+  .axis{display:flex;align-items:center;gap:11px;padding:6px 0;border-bottom:1px solid var(--hair)}
+  .axis:last-child{border-bottom:0}
+  .axis .nm{flex:1;min-width:0;font-size:0.84rem}
+  .pips{display:flex;gap:3px;flex:0 0 auto}
+  .pip{width:7px;height:7px;border-radius:2px;background:var(--track)}
+  .pip.on{background:var(--accent)}
+  .pip.on.lo{background:var(--warn)}
+  .pip.on.hi{background:var(--good)}
+  .val{font-family:var(--mono);font-size:0.82rem;font-weight:500;
+       font-variant-numeric:tabular-nums;width:16px;text-align:right}
+
+  /* ---------- takeaways ---------- */
+  .takeaways{display:grid;gap:12px;margin-top:22px;grid-template-columns:repeat(auto-fit,minmax(255px,1fr))}
+  .tk{border-radius:9px;padding:15px 17px;border:1px solid transparent}
+  .tk h3{font-family:var(--sans);font-size:0.72rem;font-weight:600;
+         text-transform:uppercase;letter-spacing:0.07em}
+  .tk ul{margin:10px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+  .tk li{font-size:0.84rem;line-height:1.52;padding-left:14px;position:relative}
+  .tk li::before{content:"";position:absolute;left:0;top:8px;width:5px;height:5px;border-radius:50%}
+  .tk.win{background:var(--good-soft);border-color:var(--good-line)}
+  .tk.win h3,.tk.win li{color:var(--good)}
+  .tk.win li::before{background:var(--good)}
+  .tk.fix{background:var(--warn-soft);border-color:var(--warn-line)}
+  .tk.fix h3,.tk.fix li{color:var(--warn)}
+  .tk.fix li::before{background:var(--warn)}
+
+  /* ---------- replay ---------- */
+  .track{position:relative;height:30px;border-radius:6px;background:var(--track);
+         margin-top:18px;overflow:hidden}
+  .track i{position:absolute;top:6px;bottom:6px;width:3px;border-radius:2px}
+  .track i.g{background:var(--good)}
+  .track i.b{background:var(--warn)}
+  .ticks{display:flex;justify-content:space-between;font-family:var(--mono);
+         font-size:0.67rem;color:var(--muted);margin-top:6px}
+
+  .beat{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--hair)}
+  .beat:last-child{border-bottom:0}
+  .beat time{font-family:var(--mono);font-size:0.75rem;color:var(--muted);
+             flex:0 0 40px;padding-top:3px}
+  .beat .b{flex:1;min-width:0}
+  .tag{display:inline-block;font-family:var(--mono);font-size:0.63rem;font-weight:500;
+       text-transform:uppercase;letter-spacing:0.05em;padding:2px 7px;border-radius:3px}
+  .tag.g{color:var(--good);background:var(--good-soft)}
+  .tag.b{color:var(--warn);background:var(--warn-soft)}
+  .beat q{display:block;margin-top:7px;font-size:0.88rem;line-height:1.55;quotes:"\201C" "\201D"}
+  .beat .ctx{margin:5px 0 0;font-size:0.8rem;color:var(--muted);line-height:1.5}
+
+  /* ---------- scorecard ---------- */
+  .card{margin-top:4px}
+  .crit{padding:17px 0;border-bottom:1px solid var(--hair)}
+  .crit:last-child{border-bottom:0}
+  .ctop{display:flex;align-items:baseline;gap:12px}
+  .ctop .nm{flex:1;font-size:0.92rem;font-weight:500}
+  .sc{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:1.02rem;font-weight:500}
+  .sc small{font-size:0.76rem;color:var(--muted);font-weight:400}
+  .bar{height:4px;border-radius:2px;background:var(--track);margin-top:9px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:2px;background:var(--accent)}
+  .bar i.lo{background:var(--warn)}
+  .bar i.hi{background:var(--good)}
+  .rat{font-size:0.85rem;color:var(--ink-soft);margin:10px 0 0;line-height:1.55}
+  .ev{margin-top:11px;display:flex;flex-direction:column;gap:7px}
+  .ev div{border-left:2px solid var(--good-line);padding-left:12px;font-size:0.81rem;line-height:1.5}
+  .ev div.b{border-left-color:var(--warn-line)}
+  .ev time{font-family:var(--mono);font-size:0.72rem;color:var(--muted);margin-right:8px}
+
+  .note{margin-top:16px;border:1px dashed var(--line);border-radius:8px;
+        padding:15px 17px;font-size:0.83rem;color:var(--muted);line-height:1.55}
+  .note strong{color:var(--ink-soft);font-weight:500}
+
+  @media print{
+    body{background:#fff}
+    .pdf{display:none}
+    section{break-inside:avoid}
+    .crit,.beat{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="top">
+    <div>
+      <div class="eyebrow">Session report</div>
+      <h1>ReAct Agents, cohort 3</h1>
+      <div class="meta">
+        <span>24 Sep 2026</span><span>Anjali Rao</span><span>15 min</span><span>4 learners</span>
+      </div>
+    </div>
+    <button class="pdf" type="button">
+      <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      Download PDF
+    </button>
+  </div>
+
+  <p class="verdict">
+    You explained the core loop well and the mechanic analogy landed. Question handling
+    was the weak point: one answer was thorough, but two were deflected to keep the
+    slides moving, and a learner's misconception went uncorrected.
+  </p>
+
+  <!-- ============ 1. PROFILE ============ -->
+  <section>
+    <div class="shead">
+      <h2>Your profile</h2>
+      <span class="from">6 of 11 criteria assessed</span>
+    </div>
+
+    <div class="profile">
+      <svg width="248" height="248" viewBox="0 0 248 248" role="img"
+           aria-label="Radar chart of six assessed criteria: Concept Explanation 5, Question Handling 2, Learner Engagement 3, Eye Contact 4, Posture and Presence 4, Gesture 3.">
+        <g fill="none" stroke="var(--line)" stroke-width="1">
+          <circle cx="124" cy="124" r="88"/><circle cx="124" cy="124" r="70.4"/>
+          <circle cx="124" cy="124" r="52.8"/><circle cx="124" cy="124" r="35.2"/>
+          <circle cx="124" cy="124" r="17.6"/>
+        </g>
+        <g stroke="var(--line)" stroke-width="1">
+          <line x1="124" y1="124" x2="124" y2="36"/>
+          <line x1="124" y1="124" x2="200.2" y2="80"/>
+          <line x1="124" y1="124" x2="200.2" y2="168"/>
+          <line x1="124" y1="124" x2="124" y2="212"/>
+          <line x1="124" y1="124" x2="47.8" y2="168"/>
+          <line x1="124" y1="124" x2="47.8" y2="80"/>
+        </g>
+        <!-- 5,2,3,4,4,3 of 5 -->
+        <polygon points="124,36 154.5,106.4 169.7,150.4 124,194.4 63,159.2 78.3,97.6"
+                 fill="var(--accent)" fill-opacity="0.15" stroke="var(--accent)" stroke-width="2"
+                 stroke-linejoin="round"/>
+        <g fill="var(--accent)">
+          <circle cx="124" cy="36" r="3.4"/><circle cx="154.5" cy="106.4" r="3.4"/>
+          <circle cx="169.7" cy="150.4" r="3.4"/><circle cx="124" cy="194.4" r="3.4"/>
+          <circle cx="63" cy="159.2" r="3.4"/><circle cx="78.3" cy="97.6" r="3.4"/>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="8.5" fill="var(--muted)" text-anchor="middle">
+          <text x="124" y="22">Concept</text>
+          <text x="216" y="72">Questions</text>
+          <text x="214" y="180">Engage</text>
+          <text x="124" y="230">Eye contact</text>
+          <text x="34" y="180">Posture</text>
+          <text x="34" y="72">Gesture</text>
+        </g>
+      </svg>
+
+      <div class="axes">
+        <div class="axis"><span class="nm">Concept Explanation</span>
+          <span class="pips"><i class="pip on hi"></i><i class="pip on hi"></i><i class="pip on hi"></i><i class="pip on hi"></i><i class="pip on hi"></i></span>
+          <span class="val">5</span></div>
+        <div class="axis"><span class="nm">Eye Contact</span>
+          <span class="pips"><i class="pip on"></i><i class="pip on"></i><i class="pip on"></i><i class="pip on"></i><i class="pip"></i></span>
+          <span class="val">4</span></div>
+        <div class="axis"><span class="nm">Posture and Presence</span>
+          <span class="pips"><i class="pip on"></i><i class="pip on"></i><i class="pip on"></i><i class="pip on"></i><i class="pip"></i></span>
+          <span class="val">4</span></div>
+        <div class="axis"><span class="nm">Learner Engagement</span>
+          <span class="pips"><i class="pip on"></i><i class="pip on"></i><i class="pip on"></i><i class="pip"></i><i class="pip"></i></span>
+          <span class="val">3</span></div>
+        <div class="axis"><span class="nm">Gesture</span>
+          <span class="pips"><i class="pip on"></i><i class="pip on"></i><i class="pip on"></i><i class="pip"></i><i class="pip"></i></span>
+          <span class="val">3</span></div>
+        <div class="axis"><span class="nm">Question Handling</span>
+          <span class="pips"><i class="pip on lo"></i><i class="pip on lo"></i><i class="pip"></i><i class="pip"></i><i class="pip"></i></span>
+          <span class="val">2</span></div>
+      </div>
+    </div>
+
+    <div class="takeaways">
+      <div class="tk win">
+        <h3>What worked</h3>
+        <ul>
+          <li>Your mechanic analogy at 0:21 made an abstract loop immediately concrete.</li>
+          <li>At 0:59 you covered both the iteration cap and the finish action, and said why the cap matters.</li>
+          <li>You held the camera steadily through the explanation sections.</li>
+        </ul>
+      </div>
+      <div class="tk fix">
+        <h3>What to work on</h3>
+        <ul>
+          <li>At 0:43 you sent Rohit to the docs. Give a one-line answer, then defer the depth.</li>
+          <li>Ananya called the agent "the same as a normal chatbot" at 1:14 and it went uncorrected.</li>
+          <li>Your hands stayed out of frame, so nothing reinforced the loop you were describing.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. REPLAY ============ -->
+  <section>
+    <div class="shead">
+      <h2>How the session went</h2>
+      <span class="from">4 graded moments</span>
+    </div>
+
+    <div class="track" role="img" aria-label="Timeline: two strong moments and two weak moments across 15 minutes.">
+      <i class="g" style="left:2.3%"></i>
+      <i class="b" style="left:4.8%"></i>
+      <i class="g" style="left:6.6%"></i>
+      <i class="b" style="left:9.0%"></i>
+    </div>
+    <div class="ticks"><span>0:00</span><span>7:30</span><span>15:00</span></div>
+
+    <div style="margin-top:8px">
+      <div class="beat">
+        <time>0:21</time>
+        <div class="b">
+          <span class="tag g">Concept Explanation</span>
+          <q>Think of it like a mechanic diagnosing a car. They form a hypothesis, run one test, look at the result, and that changes what they check next.</q>
+        </div>
+      </div>
+      <div class="beat">
+        <time>0:43</time>
+        <div class="b">
+          <span class="tag b">Question Handling</span>
+          <q>It is in the docs, we will come back to that later if there is time.</q>
+          <p class="ctx">Rohit had asked what the observe step actually observes. He did not get an answer, and did not ask again.</p>
+        </div>
+      </div>
+      <div class="beat">
+        <time>0:59</time>
+        <div class="b">
+          <span class="tag g">Question Handling</span>
+          <q>There is a max iteration cap, and the model emits a finish action when it thinks it has the answer. Both matter, because the cap is your safety net.</q>
+          <p class="ctx">A full answer to Arjun, including why it matters rather than just what it is.</p>
+        </div>
+      </div>
+      <div class="beat">
+        <time>1:21</time>
+        <div class="b">
+          <span class="tag b">Learner Engagement</span>
+          <q>Moving on to the next slide, we will cover LangGraph now.</q>
+          <p class="ctx">Ananya had just described the agent as "the same as a normal chatbot". The misconception was left standing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3. HOW YOU TAUGHT ============ -->
+  <section>
+    <div class="shead">
+      <h2>How you taught</h2>
+      <span class="from">from the transcript</span>
+    </div>
+
+    <div class="card">
+      <div class="crit">
+        <div class="ctop"><span class="nm">Concept Explanation</span><span class="sc">5<small>/5</small></span></div>
+        <div class="bar"><i class="hi" style="width:100%"></i></div>
+        <p class="rat">Accurate throughout, and the car-diagnosis analogy gave the loop a shape learners could hold onto.</p>
+        <div class="ev">
+          <div><time>0:21</time>"Think of it like a mechanic diagnosing a car. They form a hypothesis, run one test, look at the result."</div>
+        </div>
+      </div>
+
+      <div class="crit">
+        <div class="ctop"><span class="nm">Question Handling</span><span class="sc">2<small>/5</small></span></div>
+        <div class="bar"><i class="lo" style="width:40%"></i></div>
+        <p class="rat">One thorough answer, but two questions were deflected rather than addressed.</p>
+        <div class="ev">
+          <div class="b"><time>0:43</time>"It is in the docs, we will come back to that later if there is time."</div>
+          <div><time>0:59</time>"There is a max iteration cap, and the model emits a finish action when it thinks it has the answer."</div>
+          <div class="b"><time>1:21</time>"Moving on to the next slide, we will cover LangGraph now."</div>
+        </div>
+      </div>
+
+      <div class="crit">
+        <div class="ctop"><span class="nm">Learner Engagement</span><span class="sc">3<small>/5</small></span></div>
+        <div class="bar"><i style="width:60%"></i></div>
+        <p class="rat">Learners asked questions unprompted, which is a good sign, but you never drew anyone in by name or checked whether a quieter learner was following.</p>
+        <div class="ev">
+          <div class="b"><time>1:14</time>"So this is the same as a normal chatbot then, just with more steps?"</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4. HOW YOU CAME ACROSS ============ -->
+  <section>
+    <div class="shead">
+      <h2>How you came across</h2>
+      <span class="from">from the recording</span>
+    </div>
+
+    <div class="card">
+      <div class="crit">
+        <div class="ctop"><span class="nm">Eye Contact</span><span class="sc">4<small>/5</small></span></div>
+        <div class="bar"><i style="width:80%"></i></div>
+        <p class="rat">You held the camera through most of the explanation, glancing down to the deck at transitions.</p>
+        <div class="ev">
+          <div><time>0:18</time>Looking directly at camera while giving the mechanic analogy, not reading.</div>
+          <div class="b"><time>1:19</time>Eyes down on the deck for roughly eight seconds while changing slides.</div>
+        </div>
+      </div>
+
+      <div class="crit">
+        <div class="ctop"><span class="nm">Posture and Presence</span><span class="sc">4<small>/5</small></span></div>
+        <div class="bar"><i style="width:80%"></i></div>
+        <p class="rat">Upright and well framed throughout, with energy that picked up noticeably when answering Arjun.</p>
+        <div class="ev">
+          <div><time>0:59</time>Leaning slightly forward while answering, visibly more engaged than in the earlier segment.</div>
+        </div>
+      </div>
+
+      <div class="crit">
+        <div class="ctop"><span class="nm">Gesture</span><span class="sc">3<small>/5</small></span></div>
+        <div class="bar"><i style="width:60%"></i></div>
+        <p class="rat">Hands were below frame for most of the session, so the loop you described verbally was never shown physically.</p>
+        <div class="ev">
+          <div class="b"><time>0:21</time>Hands not visible while describing the three-step cycle, a natural moment to have shown it.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>Not assessed in this session:</strong> Demo Delivery, Lab Facilitation,
+      Classroom Management, Time Management and Facial Expression. Nothing took place
+      that these could be judged on, so they were left unscored rather than given a
+      middling mark. The reasons are stored with this report.
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

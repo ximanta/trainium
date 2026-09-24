@@ -275,6 +275,20 @@ class CompetencyScore(BaseModel):
     evidence: list[Evidence] = Field(default_factory=list)
 
 
+class Undetermined(BaseModel):
+    """A competency that could not be judged, and why.
+
+    Stored but not shown in the report body. It exists for traceability: an
+    admin reviewing a certification needs to know a criterion was skipped and
+    on what grounds, without that absence masquerading as a mid-range score.
+    """
+
+    competency_key: str
+    label: str
+    reason: str
+    source: Literal["transcript", "video"] = "transcript"
+
+
 class Report(BaseModel):
     id: str
     simulation_id: str
@@ -284,6 +298,9 @@ class Report(BaseModel):
     # criteria it never had a chance to demonstrate.
     scores: list[CompetencyScore] = Field(default_factory=list)
     video_scores: list[CompetencyScore] = Field(default_factory=list)
+    # Competencies with no basis to judge, kept for the record rather than
+    # rendered. Covers both rubrics; `source` says which.
+    undetermined: list[Undetermined] = Field(default_factory=list)
     summary: str = ""
     strengths: list[str] = Field(default_factory=list)
     improvements: list[str] = Field(default_factory=list)

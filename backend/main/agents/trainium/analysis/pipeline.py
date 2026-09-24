@@ -157,6 +157,39 @@ async def run_analysis(simulation_id: str) -> None:
                 for s in scored.scores
             ]
 
+        # Undetermined from both rubrics, tagged by source. Everything the
+        # camera could have shown is undetermined when there was no camera,
+        # which is why the video rubric contributes even with no video pass.
+        undetermined = [
+            {
+                "competency_key": u.competency_key,
+                "label": labels.get(u.competency_key, u.competency_key),
+                "reason": u.reason,
+                "source": "transcript",
+            }
+            for u in spoken.undetermined
+        ]
+        if delivery:
+            undetermined += [
+                {
+                    "competency_key": u.competency_key,
+                    "label": video_labels.get(u.competency_key, u.competency_key),
+                    "reason": u.reason,
+                    "source": "video",
+                }
+                for u in delivery.undetermined
+            ]
+        else:
+            undetermined += [
+                {
+                    "competency_key": c["key"],
+                    "label": c["label"],
+                    "reason": "The camera was off, so there was no recording to assess.",
+                    "source": "video",
+                }
+                for c in video_competencies
+            ]
+
         await reports_collection.update_one(
             {"id": report_id},
             {
@@ -166,6 +199,7 @@ async def run_analysis(simulation_id: str) -> None:
                     "video_scores": (
                         attach(delivery, video_evidence, video_labels) if delivery else []
                     ),
+                    "undetermined": undetermined,
                     "summary": spoken.summary,
                     "strengths": spoken.strengths,
                     "improvements": spoken.improvements,
