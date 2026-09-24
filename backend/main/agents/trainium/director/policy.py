@@ -74,6 +74,10 @@ class DirectorPolicy:
             return False
 
         # Hard triggers bypass the cooldown and probability roll entirely.
+        # A named question is the strongest of them: ignoring someone the
+        # trainer just addressed is the one thing a classroom never does.
+        if state.awaiting_reply_from:
+            return True
         if trainer_asked_open_question:
             return True
         if trainer_paused_s > 8.0:
@@ -95,6 +99,15 @@ class DirectorPolicy:
         raised hand (their pending line is held until the trainer calls on
         them, so they must not be reselected in the meantime).
         """
+        # A question put to someone by name belongs to them. Their own
+        # cooldown is waived too, since the trainer just asked them directly
+        # and "they spoke recently" is not a reason to leave it hanging.
+        addressed = state.awaiting_reply_from
+        if addressed:
+            persona = state.persona_states.get(addressed)
+            if persona is not None and not persona.muted:
+                return [addressed]
+
         return [
             pid
             for pid, p in state.persona_states.items()

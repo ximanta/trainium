@@ -29,7 +29,11 @@ from main.agents.trainium.db_manager import (
 from main.agents.trainium.director.layer_b import DirectorDecision
 from main.agents.trainium.director.persistence import append_event, append_transcript_segment
 from main.agents.trainium.director.policy import DirectorPolicy
-from main.agents.trainium.director.reducer import apply_floor_control, apply_trainer_utterance
+from main.agents.trainium.director.reducer import (
+    apply_direct_address,
+    apply_floor_control,
+    apply_trainer_utterance,
+)
 from main.agents.trainium.director.speculative import SpeculativeDirector
 from main.agents.trainium.director.state import PersonaState, create_session, remove_session
 from main.agents.trainium.models import TRAINER_ADDRESSES
@@ -41,6 +45,13 @@ from main.config import settings
 # minute is a warning that it is about to close. Kept few on purpose, since the
 # clock is always visible and a nudge every few minutes would be nagging.
 NUDGE_MARKS_S = (600, 300, 60)
+
+# How long a persona is protected from barge-in after its turn starts. TTS
+# takes a second or two to produce its first audio, so without this the
+# trainer's next breath cancels a line that has not been heard at all, leaving
+# transcript text with no voice behind it. Long enough to cover generation,
+# short enough that interrupting a rambling persona still feels immediate.
+BARGE_IN_GRACE_S = 2.5
 
 
 async def _ws_send_json(websocket: WebSocket, payload: dict) -> None:
@@ -230,6 +241,12 @@ def configure_routes_ws_session(app: FastAPI) -> None:
 
         transcript_buffer: list[str] = []
         tts_task: asyncio.Task | None = None
+        # When the current persona turn began. Barge-in is suppressed for a
+        # moment after that: TTS takes a second or two to produce its first
+        # audio, and without a grace period the trainer's next breath cancels
+        # a persona before a single word of it has been heard. That produced
+        # transcript lines with no voice, which reads as the app being broken.
+        tts_started_at: float = 0.0
         turn_generation = 0
         turn_start_elapsed = 0.0
 
@@ -280,6 +297,10 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             # "Let me explain first" and "any questions?" change whether anyone
             # may speak, so the client is told and can show the state on the
             # control bar.
+            # Who, if anyone, the trainer just named. Runs before the gate so
+            # eligibility can narrow to that persona.
+            apply_direct_address(state, full_transcript, state.last_persona_speaker)
+
             floor_changed = apply_floor_control(state, full_transcript)
             if floor_changed is not None:
                 await _ws_send_json(
@@ -346,10 +367,15 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             return
 
         async def speak_now(decision: DirectorDecision, persona) -> None:
-            nonlocal tts_task
+            nonlocal tts_task, tts_started_at
             state.elapsed_s = time.monotonic() - session_start
             state.record_intervention(decision.persona_id)
             state.record_persona_utterance(persona.display_name or decision.persona_id, decision.text)
+            # A persona already talking is cut off rather than overlapped: two
+            # voices at once is worse than one interruption.
+            if tts_task is not None and not tts_task.done():
+                tts_task.cancel()
+            tts_started_at = time.monotonic()
             tts_task = asyncio.create_task(
                 _stream_persona_tts(
                     client, decision, persona.voice_id, websocket, simulation_id, state.elapsed_s
@@ -513,7 +539,17 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                     # cancel its audio rather than letting the two
                                     # talk over each other. This is the automatic
                                     # barge-in the manual button was standing in for.
-                                    if tts_task is not None and not tts_task.done():
+                                    #
+                                    # Except in the first moments of a turn: the
+                                    # persona has not been heard yet, so cancelling
+                                    # is not an interruption, it is a line that
+                                    # never plays.
+                                    speaking_for = time.monotonic() - tts_started_at
+                                    if (
+                                        tts_task is not None
+                                        and not tts_task.done()
+                                        and speaking_for > BARGE_IN_GRACE_S
+                                    ):
                                         tts_task.cancel()
                                         await _ws_send_json(
                                             websocket, {"type": "barge_in_ack", "data": {}}

@@ -42,6 +42,44 @@ _OPEN_PHRASES = (
 )
 
 
+def apply_direct_address(
+    state: SessionState, utterance: str, last_persona_speaker: str | None = None
+) -> str | None:
+    """Note who owes the trainer a reply.
+
+    Two ways that happens, and the second matters more than it looks:
+
+    - The trainer names someone. Matched on roster first names with word
+      boundaries, so "same" cannot match "Sam".
+    - The trainer asks a question straight after a persona spoke, without
+      naming anyone. Real trainers do this constantly: "what typo do you
+      mean?" needs no name because everyone knows who is being asked. Early
+      testing missed this entirely and a third learner answered instead,
+      which is what made the class read as people talking past each other.
+
+    Clears on any trainer turn that is neither, since an unanswered question
+    should not hold the floor forever.
+    """
+    text = utterance.lower()
+
+    for pid, persona in state.persona_states.items():
+        name = (persona.display_name or "").strip()
+        if not name:
+            continue
+        if re.search(rf"\b{re.escape(name.split()[0].lower())}\b", text):
+            state.awaiting_reply_from = pid
+            return pid
+
+    # An unnamed question, right after someone spoke, belongs to them.
+    if last_persona_speaker and "?" in utterance:
+        if last_persona_speaker in state.persona_states:
+            state.awaiting_reply_from = last_persona_speaker
+            return last_persona_speaker
+
+    state.awaiting_reply_from = None
+    return None
+
+
 def apply_floor_control(state: SessionState, utterance: str) -> bool | None:
     """Hold or release the floor when the trainer says so.
 

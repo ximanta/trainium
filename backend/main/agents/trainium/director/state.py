@@ -57,6 +57,16 @@ class SessionState:
     # but may still raise a hand, so the queue builds visibly and the trainer
     # can see who is waiting.
     floor_held: bool = False
+    # The persona the trainer just spoke to by name, if any. While this is set
+    # the floor belongs to them: a real classroom does not let a third person
+    # answer a question put directly to someone else, which is what made the
+    # conversation feel like unrelated people talking past each other.
+    awaiting_reply_from: str | None = None
+    # The persona who spoke most recently, by id. The transcript keeps display
+    # names for the prompt's benefit, which cannot be matched back to a
+    # persona, so the id is kept separately: an unnamed follow-up question
+    # belongs to whoever just spoke.
+    last_persona_speaker: str | None = None
     # How long the admin allotted. The session ends itself at this point so an
     # abandoned tab cannot keep spending on LLM calls.
     duration_s: float = 1800.0
@@ -109,6 +119,7 @@ class SessionState:
 
     def record_intervention(self, persona_id: str) -> None:
         self.intervention_count_window.append(self.elapsed_s)
+        self.last_persona_speaker = persona_id
         # Counted here because this is the one place every speaking path goes
         # through, including a persona called on after raising a hand.
         self.turns_taken += 1

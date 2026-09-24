@@ -65,6 +65,8 @@ Recent classroom events: {recent_events}
 
 Screen: {screen_status}
 
+{reply_instruction}
+
 Decide: should a persona speak, react non-verbally, or stay silent this turn?
 If speak, set persona_id to that persona's id exactly as listed above, and \
 write their exact spoken line, in character for their type and current \
@@ -72,6 +74,18 @@ emotional state. The line must be short (1-2 sentences), in a natural spoken \
 register, no markdown, no lists, no meta-commentary about being an AI. Do not \
 ask about objectives not yet covered. Set urgency 1-5 based on how much this \
 needs the trainer's attention now versus could wait.
+
+Ask about the substance of what is being taught, never about how the slide \
+was made. Typos, fonts, layout, stock illustrations and clip-art are not \
+teaching content: a learner in a real class does not ask whether they need to \
+understand the gears in a decorative graphic, or raise a spelling mistake as \
+though it mattered. If the only thing you can find to say is about the \
+artwork or the wording of the slide rather than the idea on it, stay silent.
+
+Prefer a follow-up to a new topic. If the trainer has just answered someone, \
+the most natural next line is usually that person saying whether it landed, \
+or pushing once more on the part still unclear. A class where every turn \
+opens an unrelated new question does not sound like a conversation.
 
 If the persona introduces themselves or is asked who is speaking, they must \
 use the name given for them above. Never invent a different name.
@@ -81,9 +95,11 @@ confirmed they can hear the trainer, or already answered the trainer's \
 question, do not say it again: either add something genuinely new or stay \
 silent. Read the conversation above before deciding.
 
-Spread participation across the class like a real classroom would: strongly \
-prefer a persona who has not spoken yet, and avoid picking the same persona \
-twice in a row unless their disposition makes it clearly the right call.
+Spread participation across the class like a real classroom would: prefer a \
+persona who has not spoken yet, and avoid picking the same persona twice in a \
+row. This is a tiebreaker between people who could plausibly speak next, not a \
+reason to hand the floor to someone unrelated. Answering the trainer, and \
+following up on the thread already running, both come first.
 
 Set needs_hand_raise to true ONLY when this persona wants to interrupt with \
 something off the current thread, for example a question about an earlier \
@@ -104,6 +120,16 @@ explaining. Do not speak. Set action to stay_silent."""
 
 _FLOOR_OPEN = """\
 The floor is open: the trainer is taking questions."""
+
+# Layer A already narrows eligibility to the addressed persona, so this tells
+# the model what that turn is for rather than who may take it.
+_REPLY_OWED = """\
+IMPORTANT: the trainer has just spoken to {name} by name. This turn is {name} \
+answering them, and nobody else. Reply to what was actually asked, in one or \
+two sentences. If the question was about something {name} said earlier, answer \
+that specific thing rather than changing the subject."""
+
+_REPLY_OPEN = ""
 
 
 def _format_persona_digest(personas: dict[str, PersonaState], elapsed_s: float) -> str:
@@ -147,6 +173,16 @@ async def decide_and_speak(
         audience=state.audience or DEFAULT_AUDIENCE,
         trainer_description=describe_trainer(state.trainer_name, state.trainer_address),
         floor_instruction=_FLOOR_HELD if state.floor_held else _FLOOR_OPEN,
+        reply_instruction=(
+            _REPLY_OWED.format(
+                name=(
+                    state.persona_states[state.awaiting_reply_from].display_name
+                    or state.awaiting_reply_from
+                )
+            )
+            if state.awaiting_reply_from in state.persona_states
+            else _REPLY_OPEN
+        ),
         current_objective=state.current_objective_id or "(none set)",
         slide_number=state.slide_number,
         elapsed_s=state.elapsed_s,
