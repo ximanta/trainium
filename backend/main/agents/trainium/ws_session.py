@@ -379,7 +379,11 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                 f"[latency] endpoint={t_endpoint - t_turn:.2f}s "
                 f"layer_b={layer_b_s:.2f}s ({'cached' if cached else 'MISS'}) "
                 f"cache={director.hits}/{director.hits + director.misses} "
-                f"speculations={director.speculations}",
+                f"spec={director.speculations} "
+                f"skips[quiet={director.skip_not_speaking} "
+                f"inflight={director.skip_in_flight} "
+                f"same={director.skip_same_text} "
+                f"soon={director.skip_too_soon}]",
                 flush=True,
             )
             if decision is None or decision.action != "speak":

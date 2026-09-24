@@ -45,12 +45,30 @@ class SpeculativeDirector:
         self.hits = 0
         self.misses = 0
         self.speculations = 0
+        # Why a speculation did not fire. Two sessions in a row logged
+        # cache=0/15 with almost no speculations, and the reason cannot be
+        # read off the code: each guard looks reasonable alone.
+        self.skip_not_speaking = 0
+        self.skip_in_flight = 0
+        self.skip_same_text = 0
+        self.skip_too_soon = 0
 
     def on_speech_start(self):
         self._speaking = True
         self._cached_decision = None
         self._cached_transcript_len = -1
         self._cached_turns = -1
+        # Abandon a speculation still running from the previous turn. Layer B
+        # takes about four seconds, longer than many turns, so without this a
+        # short turn leaves a task in flight that blocks every speculation of
+        # the next turn: a real session logged two speculations across fifteen
+        # turns and never once hit the cache.
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+        self._task = None
+        # The interval is measured from the last speculation's completion, so
+        # a stale one would also hold the next turn off for two more seconds.
+        self._cached_at = -999.0
 
     def on_speech_end(self):
         self._speaking = False
@@ -64,8 +82,10 @@ class SpeculativeDirector:
         since the last speculation (no point re-running on the same text).
         """
         if not self._speaking:
+            self.skip_not_speaking += 1
             return
         if self._task is not None and not self._task.done():
+            self.skip_in_flight += 1
             return
         # Length of what is being said right now, not of the settled
         # transcript. transcript_recent only grows when a turn completes, so
@@ -76,8 +96,10 @@ class SpeculativeDirector:
         # to hide.
         current_len = len(state.in_progress_partial)
         if current_len == self._cached_transcript_len:
+            self.skip_same_text += 1
             return
         if time.monotonic() - self._cached_at < SPECULATION_INTERVAL_S:
+            self.skip_too_soon += 1
             return
 
         self.speculations += 1
