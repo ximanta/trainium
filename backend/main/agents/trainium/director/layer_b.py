@@ -265,7 +265,10 @@ async def decide_and_speak(
             types.Part.from_bytes(data=state.screen_frame_jpeg, mime_type="image/jpeg")
         )
 
-    response = client.models.generate_content(
+    # Async client, not the sync one. The sync call blocks the event loop for
+    # its whole duration, which in this loop means the clock, the silence
+    # watchdog and the audio relay all stall behind every Director call.
+    response = await client.aio.models.generate_content(
         model=settings.gemini_model_flash_lite,
         contents=contents,
         config=types.GenerateContentConfig(
