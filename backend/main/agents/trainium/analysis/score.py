@@ -9,6 +9,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
+from main.agents.trainium.thinking import minimal_thinking
 from main.config import settings
 
 
@@ -151,7 +152,7 @@ async def score_competencies(
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema=ScoringResult,
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            thinking_config=minimal_thinking(settings.gemini_model_analysis),
         ),
     )
 

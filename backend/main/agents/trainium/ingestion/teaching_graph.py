@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
+from main.agents.trainium.thinking import minimal_thinking
 from main.config import settings
 from main.agents.trainium.storage import download_file
 
@@ -138,7 +139,7 @@ async def _generate_window(
             response_schema=ModuleWindowResult,
             temperature=0,
             max_output_tokens=8192,
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            thinking_config=minimal_thinking(settings.gemini_model_flash),
         ),
     )
 
