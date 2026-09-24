@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { api } from "@/api/axios";
+import { ClassroomLoading } from "@/components/agents/trainium/ClassroomLoading";
 import { MicVAD } from "@ricky0123/vad-web";
 import {
   ChevronLeft,
@@ -711,6 +712,17 @@ export function TrainiumClassroom({
     if (ws) setTimeout(() => sendScreenFrameIfChanged(ws), 300);
   }
 
+  // Arriving from the green room, the classroom is still connecting: showing
+  // it now means an empty stage reading "nothing is being presented" next to
+  // a Join button that is already joining, which invites a second click.
+  // Not while something has gone wrong: the loading screen has no way to
+  // resolve after a failed connection, so it would leave the trainer waiting
+  // on a room that is never going to open.
+  const connectionFailed = /error|disconnect/i.test(status);
+  if (autoJoin && !joined && !endedReason && !connectionFailed) {
+    return <ClassroomLoading personaNames={participants.map((p) => p.displayName)} />;
+  }
+
   return (
     <div className="flex h-[calc(100vh-6rem)] gap-3">
       {/* Participant rail: vertical and scrollable so a class of twenty fits
@@ -906,7 +918,11 @@ export function TrainiumClassroom({
               Close
             </Button>
           ) : !joined ? (
-            <Button onClick={join}>Join session</Button>
+            // "Try again" when a connection already failed: the trainer
+            // pressed start, so offering to join implies nothing happened.
+            <Button onClick={join}>
+              {connectionFailed ? "Try again" : "Join session"}
+            </Button>
           ) : (
             <>
               <Button
