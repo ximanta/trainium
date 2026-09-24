@@ -633,7 +633,27 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                         run_director_turn(turn_generation, turn_start_elapsed)
                                     )
                                 elif control_type == "slide_change":
-                                    state.slide_number = control.get("data", {}).get("slide")
+                                    previous = state.slide_number
+                                    slide = control.get("data", {}).get("slide")
+                                    state.slide_number = slide
+                                    if isinstance(slide, int):
+                                        # Progress is the furthest point
+                                        # reached, not the current slide:
+                                        # going back to re-explain something
+                                        # does not undo what was covered.
+                                        state.furthest_slide = max(
+                                            state.furthest_slide, slide
+                                        )
+                                        # Going back is a real classroom
+                                        # signal, usually that something did
+                                        # not land. The Director cannot infer
+                                        # it from the slide number alone, so
+                                        # it is recorded as an event.
+                                        if isinstance(previous, int) and slide < previous:
+                                            state.record_event(
+                                                "slide_back",
+                                                {"from": previous, "to": slide},
+                                            )
                                 elif control_type == "screen_share":
                                     if not control.get("data", {}).get("on"):
                                         # Sharing stopped, drop the stale frame so

@@ -50,6 +50,12 @@ class SessionState:
     # measured. Zero when no deck is attached, which the phase logic treats as
     # "time is the only signal" rather than as a finished deck.
     slides_total: int = 0
+    # The furthest slide reached, which is what measures progress through the
+    # deck. Distinct from slide_number: a trainer who jumps back to slide 3 to
+    # re-explain something has not undone the twenty slides already covered,
+    # and treating the current slide as progress would reset the session's
+    # phase to its opening.
+    furthest_slide: int = 0
     # Who the learners are, as free text. Drives how the personas talk, so a
     # cohort of fresh graduates does not sound like senior consultants.
     audience: str = ""

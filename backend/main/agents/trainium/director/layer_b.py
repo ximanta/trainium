@@ -61,6 +61,12 @@ no persona ever mentions a slide number, says how far through the deck they
 are, or refers to slides still to come. They can feel time passing, because
 anyone can see a clock, but they cannot see the trainer's deck.
 
+A slide_back event in the recent events above means the trainer returned to
+something already covered, which learners do notice: usually it means a point
+did not land, or someone's question sent the trainer back. A learner might
+recognise the slide, say this is the part that confused them, or connect it to
+the question just asked. They would not say which slide number it was.
+
 Conversation so far (most recent last, includes what the learners already said):
 {transcript_recent}
 Trainer is currently mid-sentence saying (not finished yet): {in_progress_partial}
@@ -215,7 +221,9 @@ async def decide_and_speak(
             observe(
                 state.elapsed_s,
                 state.duration_s,
-                state.slide_number,
+                # Furthest reached, not current: jumping back to slide 3 at
+                # minute 20 must not reset the session to its opening phase.
+                state.furthest_slide,
                 state.slides_total,
                 bool(state.transcript_recent),
             )
