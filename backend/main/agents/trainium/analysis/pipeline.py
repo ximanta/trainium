@@ -226,6 +226,18 @@ async def run_analysis(simulation_id: str) -> None:
                         attach(delivery, video_evidence, video_labels) if delivery else []
                     ),
                     "undetermined": undetermined,
+                    # Reported beside the scores rather than folded into them:
+                    # quality and coverage are independent, and a single
+                    # number cannot say "explained well, but barely any of it".
+                    "coverage": {
+                        "slides_total": coverage.slides_total,
+                        "furthest_slide": coverage.furthest_slide,
+                        "slides_discussed": coverage.slides_reached,
+                        "fraction": round(coverage.fraction, 3),
+                        "met_threshold": coverage.met_threshold,
+                        "elapsed_min": round(coverage.elapsed_min, 1),
+                        "planned_min": coverage.planned_min,
+                    },
                     "summary": spoken.summary,
                     "strengths": spoken.strengths,
                     "improvements": spoken.improvements,

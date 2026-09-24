@@ -228,6 +228,49 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
         <p className="mt-6 max-w-[70ch] leading-relaxed text-slate-700">{report.summary}</p>
       )}
 
+      {/* Coverage sits apart from the scores because it is measured, not
+          judged. Keeping it separate is what lets a reader see "explained
+          well, but barely any of it", which one blended number cannot say. */}
+      {report.coverage && report.coverage.slides_total > 0 && (
+        <div className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border bg-slate-50 px-5 py-4">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+              Material covered
+            </p>
+            <p className="mt-1 flex items-baseline gap-2">
+              <span
+                className={`font-mono text-xl font-semibold tabular-nums ${
+                  report.coverage.met_threshold ? "text-green-800" : "text-amber-700"
+                }`}
+              >
+                {Math.round(report.coverage.fraction * 100)}%
+              </span>
+              <span className="text-sm text-muted-foreground">
+                reached slide {report.coverage.furthest_slide} of{" "}
+                {report.coverage.slides_total}
+              </span>
+            </p>
+          </div>
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+              Time used
+            </p>
+            <p className="mt-1 flex items-baseline gap-2">
+              <span className="font-mono text-xl font-semibold tabular-nums">
+                {Math.round(report.coverage.elapsed_min)}
+                <span className="text-sm font-normal text-muted-foreground">
+                  /{report.coverage.planned_min} min
+                </span>
+              </span>
+            </p>
+          </div>
+          <p className="max-w-[34ch] text-xs leading-relaxed text-muted-foreground">
+            Measured from the deck, not scored. The criteria below judge how well
+            you taught what you did cover.
+          </p>
+        </div>
+      )}
+
       {/* Profile: the whole assessed picture before any detail. */}
       {ranked.length >= 3 && (
         <section className="mt-10">

@@ -74,11 +74,13 @@ Rules:
 the session itself.
 - The session facts are measured, not inferred. Treat them as true. They are \
 the basis for judging pacing and coverage, which no quote can show.
-- Judge each competency on the session as a whole, not on its best moment. A \
-few good quotes drawn from a session that covered a fraction of its material \
-evidence a few good moments, not a strong session: the material never reached \
-is part of what you are scoring. Ask how much of what the trainer set out to \
-do was actually done, then score that.
+- Score quality, not quantity. How much of the deck was reached is measured \
+separately and reported on its own, so do not mark a competency down for \
+material that was never covered, and do not mark one up because a lot was. \
+The one exception is Time Management, which exists to judge pacing and \
+coverage.
+- Within what the session did cover, judge the pattern rather than the best \
+moment. One strong explanation among several weak ones is not a 5.
 - Where a competency has no evidence, do NOT score it. Put it in undetermined \
 instead, with a one-line reason saying what was absent, for example "no demo \
 was run in this session" or "no lab exercise took place". Never assign a \

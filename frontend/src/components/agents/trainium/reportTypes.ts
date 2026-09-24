@@ -41,9 +41,22 @@ export type ReportRecording = {
   size_bytes?: number;
 };
 
+/** How much of the deck the session reached. Measured, not scored: quality
+ *  and coverage are independent, so they are reported as separate facts. */
+export type ReportCoverage = {
+  slides_total: number;
+  furthest_slide: number;
+  slides_discussed: number;
+  fraction: number;
+  met_threshold: boolean;
+  elapsed_min: number;
+  planned_min: number;
+};
+
 export type Report = {
   session?: ReportSession;
   recording?: ReportRecording | null;
+  coverage?: ReportCoverage | null;
   status: "pending" | "running" | "complete" | "failed";
   error?: string;
   summary?: string;

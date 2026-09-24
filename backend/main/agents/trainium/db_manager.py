@@ -223,15 +223,17 @@ DEFAULT_RUBRIC_SEED = {
             "label": "Concept Explanation",
             "scale_min": 1,
             "scale_max": 5,
-            # Anchors describe the session's pattern, not a single good
-            # moment. The old wording said "at least one concrete analogy",
-            # which a trainer who explained one concept well and skipped nine
-            # others satisfied literally, scoring 5/5 for covering a tenth of
-            # the material.
+            # Quality only, judged on what was actually taught. How much of the
+            # deck was reached is a separate, measured figure reported beside
+            # this one: folding both into a single number makes a 3 unreadable,
+            # since it could mean half the material explained well or all of it
+            # explained poorly. The earlier wording said "at least one concrete
+            # analogy", which one good explanation satisfied however little
+            # else was covered.
             "anchors": {
-                "1": "Concepts are explained inaccurately, or most were never explained at all.",
-                "3": "The concepts that were covered are explained accurately, but plainly, or a substantial part of the material was left unexplained.",
-                "5": "Concepts are explained accurately and made concrete with analogies or examples, consistently across the material the session set out to cover.",
+                "1": "Explanations are inaccurate or misleading.",
+                "3": "Explanations are accurate but stay abstract, with few concrete examples.",
+                "5": "Explanations are accurate and consistently made concrete with analogies or examples.",
             },
         },
         {
