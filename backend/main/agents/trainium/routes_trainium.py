@@ -11,6 +11,7 @@ from main.agents.trainium.db_manager import (
 )
 from main.agents.trainium.models import Rubric
 from main.agents.trainium.routes_courses import configure_routes_courses
+from main.agents.trainium.routes_calibration import configure_routes_calibration
 from main.agents.trainium.routes_reports import configure_routes_reports
 from main.agents.trainium.storage import download_file
 from main.agents.trainium.voices import VOICE_CATALOGUE
@@ -19,6 +20,7 @@ from main.agents.trainium.voices import VOICE_CATALOGUE
 def configure_routes_trainium(app: FastAPI) -> None:
     configure_routes_courses(app)
     configure_routes_reports(app)
+    configure_routes_calibration(app)
 
     @app.get("/trainium/health")
     async def health():

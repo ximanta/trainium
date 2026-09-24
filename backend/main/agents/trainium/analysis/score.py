@@ -47,6 +47,9 @@ the evidence gathered from it.
 The rubric:
 {rubric}
 
+What happened in the session:
+{session_facts}
+
 The evidence, grouped by competency:
 {evidence}
 
@@ -55,7 +58,10 @@ summary of the session, two or three specific strengths, and two or three \
 specific things to improve.
 
 Rules:
-- Score only from the evidence above. You have not seen the session itself.
+- Score only from the evidence and the session facts above. You have not seen \
+the session itself.
+- The session facts are measured, not inferred. Treat them as true. They are \
+the basis for judging pacing and coverage, which no quote can show.
 - Where a competency has no evidence, do NOT score it. Put it in undetermined \
 instead, with a one-line reason saying what was absent, for example "no demo \
 was run in this session" or "no lab exercise took place". Never assign a \
@@ -99,15 +105,24 @@ def _format_evidence(evidence: list[dict], competencies: list[dict]) -> str:
 
 
 async def score_competencies(
-    evidence: list[dict], competencies: list[dict]
+    evidence: list[dict],
+    competencies: list[dict],
+    session_facts: str = "",
+    fact_backed_keys: frozenset[str] = frozenset(),
 ) -> ScoringResult:
-    """Score a rubric from evidence alone."""
+    """Score a rubric from evidence and measured session facts.
+
+    `fact_backed_keys` names competencies that the facts alone can support, so
+    they stay scorable without a quote. Time Management is the case this exists
+    for: pacing is never something anybody says, it is measured.
+    """
     if not competencies:
         return ScoringResult()
 
     client = genai.Client(api_key=settings.gemini_api_key)
     prompt = _PROMPT.format(
         rubric=_format_rubric(competencies),
+        session_facts=session_facts or "(nothing measured for this session)",
         evidence=_format_evidence(evidence, competencies),
     )
 
@@ -123,10 +138,13 @@ async def score_competencies(
 
     result = response.parsed or ScoringResult()
 
-    # A score is only admissible where evidence actually exists. Checked here
-    # rather than trusted to the prompt, because a model told not to score an
-    # empty competency will still occasionally do it.
+    # A score is only admissible where there is something to score from.
+    # Checked here rather than trusted to the prompt, because a model told not
+    # to score an empty competency will still occasionally do it. Fact-backed
+    # competencies count as supported when facts were actually measured.
     with_evidence = {e["competency_key"] for e in evidence}
+    if session_facts:
+        with_evidence |= set(fact_backed_keys)
 
     # Every competency must land in exactly one bucket, so a report can never
     # silently omit a criterion the rubric promised to assess. Anything the

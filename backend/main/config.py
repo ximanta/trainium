@@ -14,6 +14,16 @@ class Settings(BaseSettings):
     # can afford the stronger model. Scoring against rubric anchors needs
     # better reasoning than the Director's quick in-character lines.
     gemini_model_analysis: str = "gemini-3.8-flash"
+    # Share of the deck a trainer is expected to get through for the session to
+    # count as covering its material. Below this, Time Management is marked
+    # down however well the session otherwise ran. Configurable because what
+    # counts as complete differs by course: a concept session may legitimately
+    # dwell on a third of the slides, a product walkthrough may not.
+    trainium_coverage_threshold: float = 0.6
+    # Sessions the golden set needs before an agreement result means anything.
+    # From the architecture doc's calibration plan; a gate cleared on three
+    # sessions is not a gate.
+    trainium_golden_set_size: int = 20
 
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""

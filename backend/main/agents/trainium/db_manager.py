@@ -12,6 +12,10 @@ events_collection = db["trainium_events"]
 evidence_collection = db["trainium_evidence"]
 reports_collection = db["trainium_reports"]
 analysis_jobs_collection = db["trainium_analysis_jobs"]
+# One document per human rating of one session. Separate from the report so a
+# second reviewer never overwrites the first: agreement needs both opinions,
+# not a consensus that has already collapsed them.
+reviews_collection = db["trainium_reviews"]
 
 # Nine persona types (spec §12), each given a distinct Gemini TTS voice
 # (architecture doc §7.2 seed mapping). org_id is None: these are system

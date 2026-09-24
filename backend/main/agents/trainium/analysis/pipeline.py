@@ -7,10 +7,12 @@ trainer closing their laptop does not cancel their own report.
 import asyncio
 import uuid
 
+from main.agents.trainium.analysis.coverage import measure
 from main.agents.trainium.analysis.extract import extract_moments
 from main.agents.trainium.analysis.score import score_competencies
 from main.agents.trainium.analysis.video import analyse_video
 from main.agents.trainium.db_manager import (
+    courses_collection,
     recordings_collection,
     reports_collection,
     rubrics_collection,
@@ -26,6 +28,11 @@ VIDEO_RUBRIC_ID = "rubric_delivery_v1"
 # said nothing and left should not get a page of scores built from silence,
 # and every such run costs tokens.
 MIN_SEGMENTS_FOR_REPORT = 4
+
+# Competencies the measured facts can support on their own. Pacing is never
+# something a trainer says, so without this Time Management is unscorable no
+# matter how well the session ran.
+FACT_BACKED_KEYS = frozenset({"time_management"})
 
 
 async def _load_rubric(rubric_id: str) -> list[dict]:
@@ -81,6 +88,20 @@ async def run_analysis(simulation_id: str) -> None:
         competencies = await _load_rubric(DEFAULT_RUBRIC_ID)
         video_competencies = await _load_rubric(VIDEO_RUBRIC_ID)
 
+        # How far through the deck the session got, measured from the slide
+        # numbers already on each transcript segment. Time Management has no
+        # other basis: pacing is never something anyone says out loud.
+        simulation = await simulations_collection.find_one(
+            {"id": simulation_id}, {"_id": 0, "course_id": 1, "duration_min": 1}
+        ) or {}
+        slides_total = 0
+        if simulation.get("course_id"):
+            course = await courses_collection.find_one(
+                {"id": simulation["course_id"]}, {"_id": 0, "slides": 1}
+            )
+            slides_total = len((course or {}).get("slides", []))
+        coverage = measure(segments, slides_total, simulation.get("duration_min", 30))
+
         recording = await recordings_collection.find_one(
             {"simulation_id": simulation_id, "track": "camera"}, {"_id": 0}
         )
@@ -133,7 +154,12 @@ async def run_analysis(simulation_id: str) -> None:
             for v in video_moments
         ]
 
-        spoken = await score_competencies(evidence, competencies)
+        spoken = await score_competencies(
+            evidence,
+            competencies,
+            session_facts=coverage.as_prompt_line(),
+            fact_backed_keys=FACT_BACKED_KEYS,
+        )
         delivery = (
             await score_competencies(video_evidence, video_competencies)
             if video_evidence
