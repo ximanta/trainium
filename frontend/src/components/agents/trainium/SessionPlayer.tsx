@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
-import { Maximize2 } from "lucide-react";
+import { Download, Maximize2 } from "lucide-react";
 
 /** The session recording.
  *
@@ -42,8 +42,18 @@ export const SessionPlayer = forwardRef<HTMLVideoElement, { simulationId: string
             <Maximize2 className="h-3.5 w-3.5" />
           </button>
         </div>
-        <figcaption className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          Click any timecode to jump to that moment.
+        <figcaption className="mt-2 flex items-start justify-between gap-3 text-xs leading-relaxed text-muted-foreground">
+          <span>Click any timecode to jump to that moment.</span>
+          {/* A plain link, not a fetch: the browser streams it straight to
+              disk rather than buffering the whole recording in memory. */}
+          <a
+            href={`${src}?download=true`}
+            download
+            className="flex shrink-0 items-center gap-1 font-medium text-slate-600 underline-offset-2 transition-colors hover:text-indigo-700 hover:underline"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Save
+          </a>
         </figcaption>
       </figure>
     );

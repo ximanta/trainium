@@ -72,9 +72,14 @@ function formatClock(seconds: number): string {
 // Codec preference, most to least wanted. Chrome and Edge take VP9, Firefox
 // VP8, Safari only MP4. All are formats the Gemini File API accepts, so
 // whichever wins here still analyses.
+// Each entry names an audio codec as well as a video one. A bare
+// "codecs=vp9" is accepted by Chrome but describes video only, which is a
+// quiet way to end up with a silent recording even when the stream carries a
+// microphone track.
 const RECORDING_TYPES = [
-  "video/webm;codecs=vp9",
-  "video/webm;codecs=vp8",
+  "video/webm;codecs=vp9,opus",
+  "video/webm;codecs=vp8,opus",
+  "video/webm;codecs=opus",
   "video/webm",
   "video/mp4",
 ];
@@ -609,6 +614,11 @@ export function TrainiumClassroom({
   function startRecording(stream: MediaStream) {
     const mimeType = pickRecordingType();
     if (!mimeType) return;
+    // A silent recording looks like a working one until someone plays it back
+    // after the session, so the absence is worth saying out loud now.
+    if (stream.getAudioTracks().length === 0) {
+      console.warn("[trainium] recording has no audio track: playback will be silent");
+    }
     try {
       const recorder = new MediaRecorder(stream, { mimeType });
       recorder.ondataavailable = (e) => {

@@ -83,7 +83,9 @@ def configure_routes_reports(app: FastAPI) -> None:
         return {"started": True}
 
     @app.get("/trainium/sessions/{simulation_id}/recording")
-    async def stream_recording(simulation_id: str, request: Request):
+    async def stream_recording(
+        simulation_id: str, request: Request, download: bool = False
+    ):
         """Stream the session recording, honouring Range requests.
 
         No auth dependency, deliberately: a <video> element cannot attach the
@@ -104,16 +106,29 @@ def configure_routes_reports(app: FastAPI) -> None:
 
         range_header = request.headers.get("range")
         if not range_header:
-            # No range asked for: send the lot, but still advertise that
-            # ranges are supported so the player knows it can seek.
+            headers = {
+                "Content-Length": str(total),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "private, max-age=3600",
+            }
+            if download:
+                # Named after the session rather than the id, so a trainer who
+                # saves several can tell them apart. Extension follows the
+                # stored type: the file is whatever the browser recorded, and
+                # renaming it .mp4 would only produce a file that will not play.
+                simulation = await simulations_collection.find_one(
+                    {"id": simulation_id}, {"_id": 0, "title": 1}
+                )
+                title = ((simulation or {}).get("title") or "session").strip()
+                slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "session"
+                ext = "mp4" if "mp4" in content_type else "webm"
+                headers["Content-Disposition"] = (
+                    f'attachment; filename="trainium-{slug}.{ext}"'
+                )
             return StreamingResponse(
                 open_range(file_id, 0, total),
                 media_type=content_type,
-                headers={
-                    "Content-Length": str(total),
-                    "Accept-Ranges": "bytes",
-                    "Cache-Control": "private, max-age=3600",
-                },
+                headers=headers,
             )
 
         # "bytes=START-END", either end optional.
