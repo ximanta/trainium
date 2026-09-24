@@ -269,6 +269,10 @@ def configure_routes_ws_session(app: FastAPI) -> None:
         # nothing is exactly the case a real class fills with someone asking
         # whether we are starting yet.
         last_trainer_speech = 0.0
+        # True between VAD speech start and end. The watchdog needs to know the
+        # trainer is talking right now, which no other state carries: a turn
+        # only lands in the transcript once it finishes.
+        trainer_speaking = False
 
         async def run_director_turn(generation: int, ts_start: float) -> None:
             nonlocal tts_task, last_trainer_speech
@@ -335,6 +339,14 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                 )
 
             t_endpoint = time.monotonic()
+            # One learner at a time. A persona mid-sentence keeps the floor:
+            # starting another cancels the first, which produced two stacked
+            # questions with the trainer never getting to answer either. The
+            # trainer interrupting is different and still cancels, because a
+            # real room falls quiet when the trainer speaks.
+            if tts_task is not None and not tts_task.done():
+                return
+
             eligible = policy.eligible_personas(state)
             should_open = policy.should_open_gate(
                 state,
@@ -495,6 +507,13 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                         while True:
                             await asyncio.sleep(2.0)
                             state.elapsed_s = time.monotonic() - session_start
+                            # Mid-sentence is not silence. last_trainer_speech
+                            # only updates when a turn settles, so a trainer
+                            # two minutes into an explanation still looked
+                            # quiet and got interrupted by a learner asking
+                            # whether they were starting yet.
+                            if trainer_speaking:
+                                continue
                             quiet_for = state.elapsed_s - last_trainer_speech
                             if quiet_for < SILENCE_PROMPT_S:
                                 continue
@@ -599,7 +618,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                 return
 
                     async def relay_client_to_live():
-                        nonlocal turn_generation, tts_task, turn_start_elapsed
+                        nonlocal turn_generation, tts_task, turn_start_elapsed, trainer_speaking
                         while True:
                             message = await websocket.receive()
                             if message.get("type") == "websocket.disconnect":
@@ -618,6 +637,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                 if control_type == "activity_start":
                                     turn_generation += 1
                                     turn_start_elapsed = time.monotonic() - session_start
+                                    trainer_speaking = True
                                     director.on_speech_start()
                                     # The trainer started talking. If a persona is
                                     # mid-sentence, that is a real interruption, so
@@ -644,6 +664,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                     )
                                     transcript_buffer.clear()
                                 elif control_type == "activity_end":
+                                    trainer_speaking = False
                                     director.on_speech_end()
                                     await live_session.send_realtime_input(
                                         activity_end=types.ActivityEnd()

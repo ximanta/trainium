@@ -27,6 +27,10 @@ class SpeculativeDirector:
         self._cached_decision: DirectorDecision | None = None
         self._cached_at: float = -999.0
         self._cached_transcript_len: int = -1
+        # How many persona turns had happened when the speculation ran. If it
+        # has changed by the time the decision is used, the conversation has
+        # moved on and the cached line no longer fits it.
+        self._cached_turns: int = -1
         self._speaking = False
         # Counters for a real session: whether speculation actually hides the
         # Layer B call is the difference between a 1.5s reply and a 4s one,
@@ -39,6 +43,7 @@ class SpeculativeDirector:
         self._speaking = True
         self._cached_decision = None
         self._cached_transcript_len = -1
+        self._cached_turns = -1
 
     def on_speech_end(self):
         self._speaking = False
@@ -83,6 +88,7 @@ class SpeculativeDirector:
         self._cached_decision = decision
         self._cached_at = time.monotonic()
         self._cached_transcript_len = transcript_len
+        self._cached_turns = state.turns_taken
 
     async def resolve(
         self, state: SessionState, eligible_persona_ids: list[str]
@@ -101,6 +107,15 @@ class SpeculativeDirector:
         in time matters.
         """
         is_fresh = time.monotonic() - self._cached_at < STALE_AFTER_S
+
+        # A speculation computed before a persona spoke does not know that
+        # persona has now had their turn, so serving it replays a line into a
+        # conversation that has moved on: one session had the same learner
+        # answer twice in a row, the second time repeating themselves. If
+        # anyone has spoken since the speculation ran, it is stale whatever
+        # the clock says.
+        if self._cached_decision is not None and self._cached_turns != state.turns_taken:
+            self._cached_decision = None
 
         if self._cached_decision is not None and is_fresh:
             decision = self._cached_decision
