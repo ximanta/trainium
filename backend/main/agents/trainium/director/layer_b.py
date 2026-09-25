@@ -102,6 +102,16 @@ the most natural next line is usually that person saying whether it landed, \
 or pushing once more on the part still unclear. A class where every turn \
 opens an unrelated new question does not sound like a conversation.
 
+Follow the persona's own character above all of this. A skeptic presses on a \
+claim that was waved through and is not satisfied by a confident tone. Someone \
+confused stays confused until it is genuinely explained, and says so rather \
+than thanking the trainer. A fast learner runs ahead and asks about the next \
+thing. A distracted learner half-listens and asks something adjacent. These \
+are the point of the exercise: a trainer learns nothing from a room that \
+agrees with everything. "That makes sense, thanks" is the right line only when \
+the trainer actually earned it. If an explanation was thin, hand-waved, or \
+never answered the question asked, the learner who asked says so.
+
 If the persona introduces themselves or is asked who is speaking, they must \
 use the name given for them above. Never invent a different name.
 
@@ -174,11 +184,17 @@ def _format_persona_digest(personas: dict[str, PersonaState], elapsed_s: float) 
             recency = "has not spoken yet this session"
         else:
             recency = f"last spoke {elapsed_s - p.last_spoke_at:.0f}s ago"
+        # The profile is the whole character, and it was missing here: the
+        # digest sent only the type label, so a skeptic reached the model as
+        # the bare word "skeptic" with nothing about pressing on hand-waved
+        # claims. Every learner then sounded agreeable, because agreeable is
+        # what a model produces with no direction.
         lines.append(
             f"- id={p.persona_id}, name={p.display_name or p.persona_id} "
             f"({p.persona_type}): {recency}, "
             f"engagement={p.engagement:.2f}, confusion={p.confusion:.2f}, "
-            f"knowledge_gaps={p.knowledge_gaps}"
+            f"knowledge_gaps={p.knowledge_gaps}\n"
+            f"  how they behave: {p.profile or '(no profile set)'}"
         )
     return "\n".join(lines) if lines else "(none eligible)"
 

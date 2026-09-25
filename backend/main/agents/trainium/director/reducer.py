@@ -28,8 +28,6 @@ _HOLD_PHRASES = (
 )
 
 _OPEN_PHRASES = (
-    "any questions",
-    "any doubts",
     "questions now",
     "over to you",
     "you can ask",
@@ -47,8 +45,13 @@ _OPEN_PHRASES = (
 _OPEN_TO_ROOM = (
     "anybody",
     "anyone",
-    "any questions",
-    "any doubts",
+    # "any query", "any queries", "any question", "any doubt": matched as a
+    # stem so a missing plural does not slip through. "Yeah, any query here?"
+    # was read as a follow-up and handed the floor back to the same learner,
+    # who then asked two questions in a row.
+    "any quer",
+    "any question",
+    "any doubt",
     "everyone",
     "everybody",
     "all clear",
