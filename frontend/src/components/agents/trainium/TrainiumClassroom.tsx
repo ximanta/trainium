@@ -194,6 +194,7 @@ export function TrainiumClassroom({
   simulationId,
   autoJoin = false,
   trainerName = "",
+  trainerEmail = "",
   trainerAddress = "name",
 }: {
   simulationId: string;
@@ -203,6 +204,7 @@ export function TrainiumClassroom({
   /** Who is teaching, as they identified themselves in the green room. Sent on
    *  the handshake because one join link is shared across many trainers. */
   trainerName?: string;
+  trainerEmail?: string;
   trainerAddress?: "sir" | "maam" | "name";
 }) {
   const [status, setStatus] = useState("Not joined");
@@ -253,6 +255,10 @@ export function TrainiumClassroom({
   // plays. Without this the text appears while the room is still silent, which
   // reads as the transcript spoiling what is about to be said.
   const pendingLineRef = useRef<TranscriptLine | null>(null);
+  // Identifies this trainer's delivery. The recording and the report are
+  // filed against it, so two trainers sharing a link do not overwrite one
+  // another.
+  const runIdRef = useRef<string>("");
 
   useEffect(() => {
     return () => {
@@ -361,6 +367,7 @@ export function TrainiumClassroom({
         JSON.stringify({
           simulation_id: simulationId,
           trainer_name: trainerName,
+          trainer_email: trainerEmail,
           trainer_address: trainerAddress,
         })
       );
@@ -390,6 +397,7 @@ export function TrainiumClassroom({
           break;
         }
         case "ready":
+          runIdRef.current = String(msg.data?.run_id ?? "");
           setJoined(true);
           setStatus("Listening");
           await startVAD(ws, micStream, audioContext);
@@ -673,6 +681,7 @@ export function TrainiumClassroom({
           "duration_s",
           String((Date.now() - recordStartRef.current) / 1000)
         );
+        form.append("run_id", runIdRef.current);
         await api.post(`/trainium/sessions/${simulationId}/recording`, form);
       } catch {
         // An upload failure costs the delivery section, not the report.
@@ -681,7 +690,9 @@ export function TrainiumClassroom({
 
     setStatus("Preparing your report...");
     try {
-      await api.post(`/trainium/sessions/${simulationId}/analyse`);
+      await api.post(
+        `/trainium/sessions/${simulationId}/analyse?run_id=${runIdRef.current}`
+      );
     } catch {
       setStatus("Session ended");
       return;
@@ -872,7 +883,9 @@ export function TrainiumClassroom({
                 </p>
                 {reportReady && (
                   <Button asChild variant="outline" size="sm" className="mt-4">
-                    <Link href={`/trainium/report/${simulationId}`}>
+                    <Link
+              href={`/trainium/report/${simulationId}?run=${runIdRef.current}`}
+            >
                       View report
                     </Link>
                   </Button>

@@ -11,6 +11,7 @@ MAX_SEGMENTS_PER_TRANSCRIPT = 5000
 
 async def append_transcript_segment(
     simulation_id: str,
+    run_id: str,
     speaker: str,
     ts_start: float,
     ts_end: float,
@@ -26,13 +27,17 @@ async def append_transcript_segment(
         "slide": slide,
     }
 
+    # Keyed on the run, not the simulation: two trainers sharing one link
+    # would otherwise append to the same transcript document and produce a
+    # single interleaved record of two separate sessions.
     existing = await transcripts_collection.find_one(
-        {"simulation_id": simulation_id}, {"segments": {"$slice": -1}, "_id": 1}
+        {"run_id": run_id}, {"segments": {"$slice": -1}, "_id": 1}
     )
     if existing is None:
         await transcripts_collection.insert_one(
             {
                 "simulation_id": simulation_id,
+                "run_id": run_id,
                 "version": 1,
                 "stt_provider": "gemini-3.5-transcribe-live",
                 "segments": [segment],
@@ -42,7 +47,7 @@ async def append_transcript_segment(
         return
 
     count = await transcripts_collection.count_documents(
-        {"simulation_id": simulation_id, "segments": {"$size": MAX_SEGMENTS_PER_TRANSCRIPT}}
+        {"run_id": run_id, "segments": {"$size": MAX_SEGMENTS_PER_TRANSCRIPT}}
     )
     if count:
         # Guard hit: this session's transcript needs to move to a
@@ -55,7 +60,7 @@ async def append_transcript_segment(
         )
 
     await transcripts_collection.update_one(
-        {"simulation_id": simulation_id},
+        {"run_id": run_id},
         {
             "$push": {"segments": segment},
             "$inc": {"word_count": len(text.split())},
@@ -64,11 +69,18 @@ async def append_transcript_segment(
 
 
 async def append_event(
-    simulation_id: str, ts_s: float, kind: str, actor: str, persona_id: str | None, payload: dict
+    simulation_id: str,
+    run_id: str,
+    ts_s: float,
+    kind: str,
+    actor: str,
+    persona_id: str | None,
+    payload: dict,
 ) -> None:
     await events_collection.insert_one(
         {
             "simulation_id": simulation_id,
+            "run_id": run_id,
             "ts_s": ts_s,
             "kind": kind,
             "actor": actor,

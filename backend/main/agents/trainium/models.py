@@ -222,9 +222,13 @@ class Simulation(BaseModel):
     id: str
     org_id: str
     trainer_id: str
-    # Who taught it, captured from the green room when the session starts. Not
-    # set by the admin: one join link is shared across many trainers, so only
-    # the person who opens it knows their own name and how to be addressed.
+    # Who the admin expects to deliver this. A link can be forwarded, so the
+    # person who actually joins confirms or corrects it in the green room and
+    # the truth is recorded on the run.
+    assigned_trainer_name: str = ""
+    assigned_trainer_email: str = ""
+    # Legacy: whoever ran it last. Superseded by SessionRun, kept so existing
+    # documents still load.
     trainer_name: str = ""
     trainer_address: TrainerAddress = "name"
     course_id: Optional[str] = None
@@ -345,3 +349,31 @@ class Report(BaseModel):
     error: str = ""
     schema_version: int = 1
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SessionRun(BaseModel):
+    """One trainer's delivery of a session.
+
+    A simulation is the setup, reusable and shared; a run is a single
+    performance of it. Everything a session produces belongs to the run, not
+    the simulation, because the same link is deliberately shared across
+    trainers.
+    """
+
+    id: str
+    simulation_id: str
+    org_id: str
+    # Who the admin expected, and who actually turned up. Both are kept: the
+    # admin's assignment is the record of intent, and a forwarded link means
+    # the person teaching may not be that person.
+    assigned_trainer_name: str = ""
+    assigned_trainer_email: str = ""
+    trainer_name: str = ""
+    trainer_email: str = ""
+    trainer_address: TrainerAddress = "name"
+    status: Literal["live", "complete", "failed"] = "live"
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ended_at: Optional[datetime] = None
+    actual_duration_s: int = 0
+    turns_taken: int = 0
+    schema_version: int = 1

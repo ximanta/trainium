@@ -16,6 +16,12 @@ analysis_jobs_collection = db["trainium_analysis_jobs"]
 # second reviewer never overwrites the first: agreement needs both opinions,
 # not a consensus that has already collapsed them.
 reviews_collection = db["trainium_reviews"]
+# One document per trainer's use of a join link. Transcripts, recordings and
+# reports were all keyed to the simulation alone, so a second trainer opening
+# the same link appended to the first one's transcript, overwrote their
+# recording, and got no report at all because one already existed. A run is
+# what those artefacts actually belong to.
+runs_collection = db["trainium_runs"]
 
 # Nine persona types (spec §12), each given a distinct Gemini TTS voice
 # (architecture doc §7.2 seed mapping). org_id is None: these are system

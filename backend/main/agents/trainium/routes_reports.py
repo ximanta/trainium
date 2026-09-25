@@ -11,6 +11,7 @@ from main.agents.trainium.auth import User, get_current_user
 from main.agents.trainium.db_manager import (
     recordings_collection,
     reports_collection,
+    runs_collection,
     simulations_collection,
 )
 from main.agents.trainium.storage import file_size, open_range, upload_file
@@ -22,6 +23,7 @@ def configure_routes_reports(app: FastAPI) -> None:
         simulation_id: str,
         file: UploadFile = File(...),
         duration_s: float = Form(0.0),
+        run_id: str = Form(""),
         user: User = Depends(get_current_user),
     ):
         """Store the trainer's camera track once the session ends.
@@ -44,11 +46,14 @@ def configure_routes_reports(app: FastAPI) -> None:
             content_type=file.content_type or "video/webm",
         )
         await recordings_collection.update_one(
-            {"simulation_id": simulation_id, "track": "camera"},
+            # Keyed on the run so a second trainer does not overwrite the
+            # first one's recording.
+            {"run_id": run_id or simulation_id, "track": "camera"},
             {
                 "$set": {
                     "id": f"rec_{uuid.uuid4().hex[:12]}",
                     "simulation_id": simulation_id,
+                    "run_id": run_id or simulation_id,
                     "track": "camera",
                     "file_id": file_id,
                     "content_type": file.content_type or "video/webm",
@@ -62,7 +67,7 @@ def configure_routes_reports(app: FastAPI) -> None:
 
     @app.post("/trainium/sessions/{simulation_id}/analyse")
     async def start_analysis(
-        simulation_id: str, user: User = Depends(get_current_user)
+        simulation_id: str, run_id: str = "", user: User = Depends(get_current_user)
     ):
         """Begin the report. Called by the client once the recording is in.
 
@@ -73,13 +78,17 @@ def configure_routes_reports(app: FastAPI) -> None:
         if simulation is None:
             raise HTTPException(status_code=404, detail="Session not found")
 
+        # Scoped to the run. Keyed on the simulation this refused to analyse a
+        # second trainer's session at all, because a report already existed:
+        # they taught a full session and silently got nothing.
+        key = run_id or simulation_id
         existing = await reports_collection.find_one(
-            {"simulation_id": simulation_id, "status": {"$in": ["running", "complete"]}}
+            {"run_id": key, "status": {"$in": ["running", "complete"]}}
         )
         if existing:
             return {"started": False, "reason": "already analysing or done"}
 
-        schedule_analysis(simulation_id)
+        schedule_analysis(simulation_id, key)
         return {"started": True}
 
     @app.get("/trainium/sessions/{simulation_id}/recording")
@@ -161,14 +170,19 @@ def configure_routes_reports(app: FastAPI) -> None:
         )
 
     @app.get("/trainium/sessions/{simulation_id}/report")
-    async def get_report(simulation_id: str, user: User = Depends(get_current_user)):
-        """The report for a session, or its progress.
+    async def get_report(
+        simulation_id: str, run_id: str = "", user: User = Depends(get_current_user)
+    ):
+        """The report for one delivery of a session.
 
         Readable by the trainer as well as the admin: the trainer is the
-        person the coaching is for.
+        person the coaching is for. Without a run_id this returns the most
+        recent, which is what a trainer wants right after teaching; an admin
+        reviewing a particular person passes the run explicitly.
         """
+        query = {"run_id": run_id} if run_id else {"simulation_id": simulation_id}
         report = await reports_collection.find_one(
-            {"simulation_id": simulation_id}, {"_id": 0}, sort=[("created_at", -1)]
+            query, {"_id": 0}, sort=[("created_at", -1)]
         )
         if report is None:
             raise HTTPException(status_code=404, detail="No report for this session")
@@ -178,9 +192,15 @@ def configure_routes_reports(app: FastAPI) -> None:
         # would otherwise supply them.
         simulation = await simulations_collection.find_one(
             {"id": simulation_id},
-            {"_id": 0, "title": 1, "trainer_name": 1, "duration_min": 1, "persona_ids": 1},
-        )
-        report["session"] = simulation or {}
+            {"_id": 0, "title": 1, "duration_min": 1, "persona_ids": 1},
+        ) or {}
+        # Trainer identity comes from the run, since the simulation is shared
+        # and its copy is only ever whoever taught most recently.
+        run = await runs_collection.find_one(
+            {"id": report.get("run_id", "")},
+            {"_id": 0, "trainer_name": 1, "trainer_email": 1, "started_at": 1},
+        ) or {}
+        report["session"] = {**simulation, **run}
 
         # Whether there is anything to play. Sent as a flag rather than a URL
         # so the client never renders a player over a 404.

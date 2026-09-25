@@ -31,6 +31,7 @@ export type Undetermined = {
 export type ReportSession = {
   title?: string;
   trainer_name?: string;
+  trainer_email?: string;
   duration_min?: number;
   persona_ids?: string[];
 };

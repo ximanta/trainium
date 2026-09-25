@@ -22,6 +22,7 @@ export function SessionEntry({
   courseTitle,
   audience,
   trainerName,
+  trainerEmail,
   durationMin,
   personas,
   slides,
@@ -31,6 +32,7 @@ export function SessionEntry({
   courseTitle: string;
   audience: string;
   trainerName: string;
+  trainerEmail: string;
   durationMin: number;
   personas: GreenRoomPersona[];
   slides: GreenRoomSlide[];
@@ -38,6 +40,7 @@ export function SessionEntry({
   // Whoever opened the link, as they identified themselves in the green room.
   const [identity, setIdentity] = useState<{
     name: string;
+    email: string;
     address: TrainerAddress;
   } | null>(null);
 
@@ -48,6 +51,7 @@ export function SessionEntry({
         courseTitle={courseTitle}
         audience={audience}
         trainerName={trainerName}
+        trainerEmail={trainerEmail}
         durationMin={durationMin}
         personas={personas}
         slides={slides}
@@ -61,6 +65,7 @@ export function SessionEntry({
       simulationId={simulationId}
       autoJoin
       trainerName={identity.name}
+      trainerEmail={identity.email}
       trainerAddress={identity.address}
     />
   );

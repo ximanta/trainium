@@ -139,9 +139,14 @@ export function SessionList() {
                 <span className="ml-1.5">{copiedId === s.id ? "Copied" : "Link"}</span>
               </Button>
             )}
+            {/* Deliveries rather than Report: a shared link can be taught by
+                several trainers, so "the report" for a configured session is
+                ambiguous. This filters the delivery list to this session. */}
             {s.status === "complete" && (
               <Button asChild variant="outline" size="sm">
-                <Link href={`/trainium/report/${s.id}`}>Report</Link>
+                <Link href={`/trainium/admin/deliveries?session=${s.id}`}>
+                  Deliveries
+                </Link>
               </Button>
             )}
             <Button asChild variant="outline" size="sm">

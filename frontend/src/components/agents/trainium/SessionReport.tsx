@@ -96,7 +96,13 @@ function Criterion({
   );
 }
 
-export function SessionReport({ simulationId }: { simulationId: string }) {
+export function SessionReport({
+  simulationId,
+  runId,
+}: {
+  simulationId: string;
+  runId?: string;
+}) {
   const [report, setReport] = useState<Report | null>(null);
   const [missing, setMissing] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -119,7 +125,10 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
 
     async function poll() {
       try {
-        const r = await api.get<Report>(`/trainium/sessions/${simulationId}/report`);
+        const r = await api.get<Report>(
+          `/trainium/sessions/${simulationId}/report`,
+          { params: runId ? { run_id: runId } : undefined }
+        );
         if (stop) return;
         setReport(r.data);
         // Analysis takes a minute or two, so the page waits rather than making
@@ -136,7 +145,7 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
     return () => {
       stop = true;
     };
-  }, [simulationId]);
+  }, [simulationId, runId]);
 
   if (missing) {
     return (
@@ -200,7 +209,13 @@ export function SessionReport({ simulationId }: { simulationId: string }) {
             {meta?.title || "Session report"}
           </h1>
           <p className="mt-1.5 font-mono text-xs text-muted-foreground">
-            {[date, meta?.trainer_name, `${meta?.duration_min ?? 0} min`, `${learners} learners`]
+            {[
+              date,
+              meta?.trainer_name,
+              meta?.trainer_email,
+              `${meta?.duration_min ?? 0} min`,
+              `${learners} learners`,
+            ]
               .filter(Boolean)
               .join("  ·  ")}
           </p>

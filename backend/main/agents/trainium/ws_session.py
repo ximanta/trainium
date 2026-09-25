@@ -24,6 +24,7 @@ from google.genai import types
 from main.agents.trainium.db_manager import (
     courses_collection,
     persona_templates_collection,
+    runs_collection,
     simulations_collection,
 )
 from main.agents.trainium.director.layer_b import DirectorDecision, decide_and_speak
@@ -101,6 +102,7 @@ async def _stream_persona_tts(
     voice_id: str,
     websocket: WebSocket,
     simulation_id: str,
+    run_id: str,
     ts_start: float,
 ) -> None:
     utterance_id = str(uuid.uuid4())
@@ -124,6 +126,7 @@ async def _stream_persona_tts(
     # in it.
     await append_transcript_segment(
         simulation_id,
+        run_id,
         speaker=decision.persona_id,
         ts_start=ts_start,
         ts_end=ts_start,
@@ -131,6 +134,7 @@ async def _stream_persona_tts(
     )
     await append_event(
         simulation_id,
+        run_id,
         ts_start,
         kind="persona_speaking",
         actor="persona",
@@ -191,6 +195,25 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             )
             await websocket.close()
             return
+
+        # One run per trainer per join. Everything this session produces is
+        # keyed to it, so a second trainer opening the same link gets their own
+        # transcript, recording and report instead of overwriting the first.
+        run_id = f"run_{uuid.uuid4().hex[:12]}"
+        await runs_collection.insert_one(
+            {
+                "id": run_id,
+                "simulation_id": simulation_id,
+                "org_id": simulation.get("org_id", ""),
+                "assigned_trainer_name": simulation.get("assigned_trainer_name", ""),
+                "assigned_trainer_email": simulation.get("assigned_trainer_email", ""),
+                "trainer_name": str(config.get("trainer_name") or "").strip()[:80],
+                "trainer_email": str(config.get("trainer_email") or "").strip()[:120],
+                "trainer_address": config.get("trainer_address") or "name",
+                "status": "live",
+                "started_at": datetime.now(timezone.utc),
+            }
+        )
 
         state = create_session(simulation_id)
         state.persona_states = await _load_session_personas(
@@ -307,6 +330,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             )
             await append_transcript_segment(
                 simulation_id,
+                run_id,
                 speaker="trainer",
                 ts_start=ts_start,
                 ts_end=state.elapsed_s,
@@ -315,6 +339,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             )
             await append_event(
                 simulation_id,
+                run_id,
                 state.elapsed_s,
                 kind="final_transcript",
                 actor="trainer",
@@ -414,6 +439,7 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             )
             await append_event(
                 simulation_id,
+                run_id,
                 state.elapsed_s,
                 kind="hand_raised",
                 actor="director",
@@ -434,7 +460,8 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             tts_started_at = time.monotonic()
             tts_task = asyncio.create_task(
                 _stream_persona_tts(
-                    client, decision, persona.voice_id, websocket, simulation_id, state.elapsed_s
+                    client, decision, persona.voice_id, websocket, simulation_id, run_id,
+                    state.elapsed_s
                 )
             )
 
@@ -488,7 +515,12 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                 },
                             },
                         )
-                        await _ws_send_json(websocket, {"type": "ready", "data": {}})
+                        # The run id goes to the client so the recording
+                        # upload and the analysis request land on this run
+                        # rather than on whichever one ran most recently.
+                        await _ws_send_json(
+                            websocket, {"type": "ready", "data": {"run_id": run_id}}
+                        )
                         roster_sent = True
                         # Connecting to the Live API takes a few seconds, and
                         # charging those to the trainer would end the session
@@ -826,22 +858,24 @@ def configure_routes_ws_session(app: FastAPI) -> None:
         if tts_task is not None and not tts_task.done():
             tts_task.cancel()
 
-        # Record how the session finished. Without this a simulation stays
-        # "scheduled" forever and there is no way to tell a completed session
-        # from one whose tab was closed after thirty seconds.
-        await simulations_collection.update_one(
-            {"id": simulation_id},
+        # Closed on the run, not the simulation. The simulation is a reusable
+        # setup that many trainers share; stamping one trainer's outcome onto
+        # it meant the record always described whoever happened to run it last.
+        await runs_collection.update_one(
+            {"id": run_id},
             {
                 "$set": {
-                    "status": "complete" if state.ended else "scheduled",
+                    "status": "complete" if state.ended else "failed",
                     "ended_at": datetime.now(timezone.utc),
                     "actual_duration_s": round(state.elapsed_s),
                     "turns_taken": state.turns_taken,
-                    # Recorded from the green room rather than the admin form,
-                    # so the report names whoever actually taught.
-                    "trainer_name": state.trainer_name,
-                    "trainer_address": state.trainer_address,
                 }
             },
+        )
+        # The simulation only tracks that it has been run at least once, which
+        # is what the admin list needs to show a Report action.
+        await simulations_collection.update_one(
+            {"id": simulation_id},
+            {"$set": {"status": "complete", "last_run_at": datetime.now(timezone.utc)}},
         )
         remove_session(simulation_id)

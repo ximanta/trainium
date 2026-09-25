@@ -73,6 +73,7 @@ export function GreenRoom({
   courseTitle,
   audience,
   trainerName,
+  trainerEmail,
   durationMin,
   personas,
   slides,
@@ -82,10 +83,15 @@ export function GreenRoom({
   courseTitle: string;
   audience: string;
   trainerName: string;
+  trainerEmail: string;
   durationMin: number;
   personas: GreenRoomPersona[];
   slides: GreenRoomSlide[];
-  onStart: (identity: { name: string; address: TrainerAddress }) => void;
+  onStart: (identity: {
+    name: string;
+    email: string;
+    address: TrainerAddress;
+  }) => void;
 }) {
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
@@ -105,20 +111,26 @@ export function GreenRoom({
   // so only the person in this room knows who they are. Remembered per browser
   // so a repeat trainer does not retype it every session.
   const [name, setName] = useState(trainerName);
+  const [email, setEmail] = useState(trainerEmail);
   const [address, setAddress] = useState<TrainerAddress>("name");
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem("trainium.trainer");
       if (!saved) return;
-      const parsed = JSON.parse(saved) as { name?: string; address?: TrainerAddress };
+      const parsed = JSON.parse(saved) as {
+        name?: string;
+        email?: string;
+        address?: TrainerAddress;
+      };
       if (parsed.name && !trainerName) setName(parsed.name);
+      if (parsed.email && !trainerEmail) setEmail(parsed.email);
       if (parsed.address) setAddress(parsed.address);
     } catch {
       // Private windows and blocked storage both throw; the fields just start
       // empty, which is the same as a first visit.
     }
-  }, [trainerName]);
+  }, [trainerName, trainerEmail]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -242,13 +254,13 @@ export function GreenRoom({
     try {
       localStorage.setItem(
         "trainium.trainer",
-        JSON.stringify({ name: name.trim(), address })
+        JSON.stringify({ name: name.trim(), email: email.trim(), address })
       );
     } catch {
       // Not being able to remember it is not a reason to block the session.
     }
     stopDevices();
-    onStart({ name: name.trim(), address });
+    onStart({ name: name.trim(), email: email.trim(), address });
   }
 
   const slide = slides[slideIndex];
@@ -327,6 +339,23 @@ export function GreenRoom({
               <option value="sir">Sir</option>
             </select>
           </div>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Your email"
+            aria-label="Your email"
+            className="mt-2 w-full rounded-md border px-3 py-2 text-sm"
+          />
+          {/* Shown only when the name differs from who the admin expected,
+              which is the forwarded-link case. Silent otherwise, since most
+              of the time the prefilled name is simply correct. */}
+          {trainerName && name.trim() && name.trim() !== trainerName && (
+            <p className="mt-1.5 text-xs text-amber-700">
+              This link was set up for {trainerName}. Your report will be filed
+              under your own name.
+            </p>
+          )}
           <p className="mt-1.5 text-xs text-muted-foreground">
             {address === "name"
               ? name.trim()

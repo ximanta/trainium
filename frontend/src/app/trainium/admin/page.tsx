@@ -18,12 +18,17 @@ export default function TrainiumAdminPage() {
               the material and learners before it runs.
             </p>
           </div>
-          <Button asChild className="shrink-0">
-            <Link href="/trainium/admin/new">
-              <Plus className="mr-1.5 h-4 w-4" />
-              New session
-            </Link>
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            <Button asChild variant="outline">
+              <Link href="/trainium/admin/deliveries">Deliveries</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/trainium/admin/new">
+                <Plus className="mr-1.5 h-4 w-4" />
+                New session
+              </Link>
+            </Button>
+          </div>
         </div>
         <div className="mt-6">
           <SessionList />

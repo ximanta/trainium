@@ -40,7 +40,7 @@ async def _load_rubric(rubric_id: str) -> list[dict]:
     return (rubric or {}).get("competencies", [])
 
 
-async def run_analysis(simulation_id: str) -> None:
+async def run_analysis(simulation_id: str, run_id: str) -> None:
     """Produce the report for a finished session.
 
     Every failure is recorded on the report rather than raised: this runs
@@ -52,6 +52,7 @@ async def run_analysis(simulation_id: str) -> None:
         {
             "id": report_id,
             "simulation_id": simulation_id,
+            "run_id": run_id,
             "rubric_id": DEFAULT_RUBRIC_ID,
             "status": "running",
             "scores": [],
@@ -64,9 +65,7 @@ async def run_analysis(simulation_id: str) -> None:
     )
 
     try:
-        transcript = await transcripts_collection.find_one(
-            {"simulation_id": simulation_id}, {"_id": 0}
-        )
+        transcript = await transcripts_collection.find_one({"run_id": run_id}, {"_id": 0})
         segments = (transcript or {}).get("segments", [])
 
         if len(segments) < MIN_SEGMENTS_FOR_REPORT:
@@ -103,7 +102,7 @@ async def run_analysis(simulation_id: str) -> None:
         coverage = measure(segments, slides_total, simulation.get("duration_min", 30))
 
         recording = await recordings_collection.find_one(
-            {"simulation_id": simulation_id, "track": "camera"}, {"_id": 0}
+            {"run_id": run_id, "track": "camera"}, {"_id": 0}
         )
 
         # The transcript pass and the video pass are independent, so they run
@@ -259,10 +258,10 @@ async def run_analysis(simulation_id: str) -> None:
         )
 
 
-def schedule_analysis(simulation_id: str) -> None:
+def schedule_analysis(simulation_id: str, run_id: str) -> None:
     """Start a report without waiting for it.
 
     The reference is dropped deliberately: the task outlives this call, and
     the report's own status field is how progress is tracked.
     """
-    asyncio.create_task(run_analysis(simulation_id))
+    asyncio.create_task(run_analysis(simulation_id, run_id))

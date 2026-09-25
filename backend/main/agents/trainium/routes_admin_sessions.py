@@ -100,6 +100,8 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
             trainer_id="",
             title=body.get("title", "Untitled session"),
             audience=body.get("audience", ""),
+            assigned_trainer_name=body.get("assigned_trainer_name", ""),
+            assigned_trainer_email=body.get("assigned_trainer_email", ""),
             course_id=course_id,
             rubric_id=body.get("rubric_id"),
             mode=body.get("mode", "practice"),
@@ -142,6 +144,11 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
         allowed = {
             "title",
             "audience",
+            # Who the admin expects to teach this. The person joining can
+            # correct it, since a link can be forwarded, but this is the
+            # record of intent.
+            "assigned_trainer_name",
+            "assigned_trainer_email",
             "course_id",
             "rubric_id",
             "persona_ids",
@@ -230,8 +237,10 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
             "course_id": simulation.get("course_id"),
             "course_title": course.get("title", ""),
             "audience": simulation.get("audience", ""),
-            "trainer_name": simulation.get("trainer_name", ""),
-            "trainer_address": simulation.get("trainer_address", "name"),
+            # Who the admin expected. The green room prefills this and the
+            # person joining can correct it, since links get forwarded.
+            "assigned_trainer_name": simulation.get("assigned_trainer_name", ""),
+            "assigned_trainer_email": simulation.get("assigned_trainer_email", ""),
             "duration_min": simulation.get("duration_min", 30),
             "personas": personas,
             "slides": slides,
