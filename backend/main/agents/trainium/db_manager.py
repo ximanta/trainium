@@ -22,6 +22,9 @@ reviews_collection = db["trainium_reviews"]
 # recording, and got no report at all because one already existed. A run is
 # what those artefacts actually belong to.
 runs_collection = db["trainium_runs"]
+# One document per trainer invited to deliver a session. Holds the code that
+# identifies them and the cap on how many times they may run it.
+assignments_collection = db["trainium_assignments"]
 
 # Nine persona types (spec §12), each given a distinct Gemini TTS voice
 # (architecture doc §7.2 seed mapping). org_id is None: these are system

@@ -21,7 +21,10 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google import genai
 from google.genai import types
 
+from pymongo import ReturnDocument
+
 from main.agents.trainium.db_manager import (
+    assignments_collection,
     courses_collection,
     persona_templates_collection,
     runs_collection,
@@ -38,6 +41,7 @@ from main.agents.trainium.director.reducer import (
 from main.agents.trainium.director.speculative import SpeculativeDirector
 from main.agents.trainium.director.state import PersonaState, create_session, remove_session
 from main.agents.trainium.models import TRAINER_ADDRESSES
+from main.agents.trainium.routes_assignments import resolve_assignment
 from main.agents.trainium.voices import accent_prompt_for_voice
 from main.config import settings
 
@@ -196,20 +200,76 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             await websocket.close()
             return
 
+        # A session with anyone assigned admits nobody without a code. One
+        # with no assignments stays open, which is how an untracked practice
+        # link keeps working.
+        assigned = await assignments_collection.count_documents(
+            {"simulation_id": simulation_id}
+        )
+        assignment: dict | None = None
+        attempt_number = 0
+        if assigned:
+            assignment = await resolve_assignment(str(config.get("code") or ""))
+            if assignment is None or assignment["simulation_id"] != simulation_id:
+                await _ws_send_json(
+                    websocket,
+                    {"type": "error", "data": {"message": "A valid trainer code is required"}},
+                )
+                await websocket.close()
+                return
+
+            # Claim the attempt in the same operation that checks it. Two tabs
+            # racing on the last remaining attempt would both pass a separate
+            # read and check, and the cap would be one worth of fiction.
+            claimed = await assignments_collection.find_one_and_update(
+                {
+                    "id": assignment["id"],
+                    "$expr": {"$lt": ["$attempts_used", "$max_attempts"]},
+                },
+                {"$inc": {"attempts_used": 1}},
+                return_document=ReturnDocument.AFTER,
+            )
+            if claimed is None:
+                await _ws_send_json(
+                    websocket,
+                    {
+                        "type": "error",
+                        "data": {"message": "You have used all your attempts at this session"},
+                    },
+                )
+                await websocket.close()
+                return
+            assignment = claimed
+            attempt_number = int(claimed.get("attempts_used", 1))
+
         # One run per trainer per join. Everything this session produces is
         # keyed to it, so a second trainer opening the same link gets their own
         # transcript, recording and report instead of overwriting the first.
         run_id = f"run_{uuid.uuid4().hex[:12]}"
+        # What the trainer asked to be called, which the personas use. Their
+        # real identity comes from the assignment and is not theirs to set,
+        # so a display name of "xyz" costs the admin nothing.
+        display_name = str(config.get("display_name") or config.get("trainer_name") or "").strip()[:80]
         await runs_collection.insert_one(
             {
                 "id": run_id,
                 "simulation_id": simulation_id,
                 "org_id": simulation.get("org_id", ""),
-                "assigned_trainer_name": simulation.get("assigned_trainer_name", ""),
-                "assigned_trainer_email": simulation.get("assigned_trainer_email", ""),
-                "trainer_name": str(config.get("trainer_name") or "").strip()[:80],
-                "trainer_email": str(config.get("trainer_email") or "").strip()[:120],
+                "assignment_id": assignment["id"] if assignment else "",
+                "assignment_code": assignment["code"] if assignment else "",
+                "assigned_trainer_name": assignment["trainer_name"] if assignment else "",
+                "assigned_trainer_email": assignment["trainer_email"] if assignment else "",
+                "display_name": display_name,
+                # Filed under the assignment where there is one, so the admin
+                # views key on an identity the trainer could not have typed.
+                "trainer_name": assignment["trainer_name"] if assignment else display_name,
+                "trainer_email": (
+                    assignment["trainer_email"]
+                    if assignment
+                    else str(config.get("trainer_email") or "").strip()[:120]
+                ),
                 "trainer_address": config.get("trainer_address") or "name",
+                "attempt_number": attempt_number,
                 "status": "live",
                 "started_at": datetime.now(timezone.utc),
             }
@@ -220,12 +280,10 @@ def configure_routes_ws_session(app: FastAPI) -> None:
             simulation.get("persona_ids", []), simulation.get("persona_overrides", {})
         )
         state.audience = simulation.get("audience", "")
-        # Whoever opened the link is the trainer, so their identity comes from
-        # the green room and nowhere else. Deliberately not falling back to the
-        # stored value: one link is shared across trainers, so what is on the
-        # document is simply whoever ran it last, and inheriting that would
-        # address this trainer by the previous one's name.
-        state.trainer_name = str(config.get("trainer_name") or "").strip()[:80]
+        # The display name, not the assignment's. What a room calls someone is
+        # theirs to choose, and an assignment reading "Anjali Rao" is no reason
+        # for a persona to use a name she does not go by.
+        state.trainer_name = display_name
         address = config.get("trainer_address") or "name"
         state.trainer_address = address if address in TRAINER_ADDRESSES else "name"
         state.duration_s = float(simulation.get("duration_min", 30)) * 60.0
@@ -872,6 +930,21 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                 }
             },
         )
+
+        # Give the attempt back when nothing was taught. A dropped connection
+        # in the first seconds is not an attempt in any sense the trainer
+        # would recognise, and charging for it turns a flaky network into a
+        # mail to an administrator. The threshold is deliberately mean: past
+        # it, a trainer who quits because it was going badly has still had
+        # their go.
+        if assignment and state.turns_taken == 0 and state.elapsed_s < 60:
+            await assignments_collection.update_one(
+                {"id": assignment["id"], "attempts_used": {"$gt": 0}},
+                {"$inc": {"attempts_used": -1}},
+            )
+            await runs_collection.update_one(
+                {"id": run_id}, {"$set": {"attempt_refunded": True}}
+            )
         # The simulation only tracks that it has been run at least once, which
         # is what the admin list needs to show a Report action.
         await simulations_collection.update_one(

@@ -13,10 +13,12 @@ from fastapi import Depends, FastAPI, HTTPException
 
 from main.agents.trainium.auth import User, get_current_admin
 from main.agents.trainium.db_manager import (
+    assignments_collection,
     courses_collection,
     persona_templates_collection,
     simulations_collection,
 )
+from main.agents.trainium.routes_assignments import attempts_left, resolve_assignment
 from main.agents.trainium.models import (
     CUSTOM_PERSONA_PREFIX,
     CUSTOM_PERSONA_TYPE,
@@ -100,8 +102,6 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
             trainer_id="",
             title=body.get("title", "Untitled session"),
             audience=body.get("audience", ""),
-            assigned_trainer_name=body.get("assigned_trainer_name", ""),
-            assigned_trainer_email=body.get("assigned_trainer_email", ""),
             course_id=course_id,
             rubric_id=body.get("rubric_id"),
             mode=body.get("mode", "practice"),
@@ -144,11 +144,6 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
         allowed = {
             "title",
             "audience",
-            # Who the admin expects to teach this. The person joining can
-            # correct it, since a link can be forwarded, but this is the
-            # record of intent.
-            "assigned_trainer_name",
-            "assigned_trainer_email",
             "course_id",
             "rubric_id",
             "persona_ids",
@@ -198,6 +193,46 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
         )
         return {"join_token": token, "join_path": f"/trainium/join/{token}"}
 
+    @app.post("/trainium/join/verify-code")
+    async def verify_code(body: dict):
+        """Public: turn a trainer's code into the session it admits them to.
+
+        The code carries its own session, so this is enough on its own and a
+        trainer who has lost the link can still get in. Returns the assignment
+        identity so the green room can show them who it thinks they are before
+        they commit to burning an attempt.
+        """
+        assignment = await resolve_assignment(str(body.get("code") or ""))
+        if assignment is None:
+            raise HTTPException(
+                status_code=404,
+                detail="That code was not recognised. Check it against the invitation you were sent.",
+            )
+
+        simulation = await simulations_collection.find_one(
+            {"id": assignment["simulation_id"]}, {"_id": 0, "title": 1, "join_token": 1}
+        )
+        if simulation is None:
+            raise HTTPException(
+                status_code=404, detail="The session this code belongs to no longer exists"
+            )
+
+        left = attempts_left(assignment)
+        return {
+            "assignment_id": assignment["id"],
+            "simulation_id": assignment["simulation_id"],
+            "session_title": simulation.get("title", ""),
+            "join_token": simulation.get("join_token"),
+            "trainer_name": assignment["trainer_name"],
+            "trainer_email": assignment["trainer_email"],
+            "attempts_left": left,
+            "max_attempts": assignment.get("max_attempts", 3),
+            # Reported rather than raised as an error: the green room shows
+            # this trainer that they are out of attempts, which is a clearer
+            # answer than a failure that looks like a bad code.
+            "exhausted": left <= 0,
+        }
+
     @app.get("/trainium/join/{join_token}")
     async def resolve_join_token(join_token: str):
         """Public: the trainer's link resolves to the session to join. No auth
@@ -208,6 +243,17 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
         )
         if simulation is None:
             raise HTTPException(status_code=404, detail="Session link not found")
+
+        # Whether this session is a tracked cohort or an open practice link.
+        # An unassigned session stays open, which is how a link dropped in a
+        # channel keeps working; the moment anyone is assigned, a code is the
+        # only way in.
+        requires_code = (
+            await assignments_collection.count_documents(
+                {"simulation_id": simulation["id"]}
+            )
+            > 0
+        )
 
         personas = await _resolve_personas(
             simulation.get("persona_ids", []), simulation.get("persona_overrides", {})
@@ -237,10 +283,10 @@ def configure_routes_admin_sessions(app: FastAPI) -> None:
             "course_id": simulation.get("course_id"),
             "course_title": course.get("title", ""),
             "audience": simulation.get("audience", ""),
-            # Who the admin expected. The green room prefills this and the
-            # person joining can correct it, since links get forwarded.
-            "assigned_trainer_name": simulation.get("assigned_trainer_name", ""),
-            "assigned_trainer_email": simulation.get("assigned_trainer_email", ""),
+            # Whether the green room must ask for a code before it lets
+            # anyone start. Identity then comes from the assignment, not from
+            # anything typed here.
+            "requires_code": requires_code,
             "duration_min": simulation.get("duration_min", 30),
             "personas": personas,
             "slides": slides,

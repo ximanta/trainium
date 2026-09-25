@@ -193,18 +193,21 @@ function VideoTile({
 export function TrainiumClassroom({
   simulationId,
   autoJoin = false,
-  trainerName = "",
-  trainerEmail = "",
+  code = "",
+  displayName = "",
   trainerAddress = "name",
 }: {
   simulationId: string;
   /** Connect on mount. Set when arriving from the green room, where the
    *  trainer has already pressed start and should not have to press join too. */
   autoJoin?: boolean;
-  /** Who is teaching, as they identified themselves in the green room. Sent on
-   *  the handshake because one join link is shared across many trainers. */
-  trainerName?: string;
-  trainerEmail?: string;
+  /** The verified trainer code. Sent on the handshake because it is what
+   *  claims an attempt and decides whose delivery this is. Empty for an open
+   *  session with nobody assigned. */
+  code?: string;
+  /** What the learners call them, which is theirs to choose and separate from
+   *  the identity the code carries. */
+  displayName?: string;
   trainerAddress?: "sir" | "maam" | "name";
 }) {
   const [status, setStatus] = useState("Not joined");
@@ -366,8 +369,8 @@ export function TrainiumClassroom({
       ws.send(
         JSON.stringify({
           simulation_id: simulationId,
-          trainer_name: trainerName,
-          trainer_email: trainerEmail,
+          code,
+          display_name: displayName,
           trainer_address: trainerAddress,
         })
       );

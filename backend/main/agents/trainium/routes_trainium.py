@@ -10,6 +10,7 @@ from main.agents.trainium.db_manager import (
     scenarios_collection,
 )
 from main.agents.trainium.models import Rubric
+from main.agents.trainium.routes_assignments import configure_routes_assignments
 from main.agents.trainium.routes_courses import configure_routes_courses
 from main.agents.trainium.routes_calibration import configure_routes_calibration
 from main.agents.trainium.routes_reports import configure_routes_reports
@@ -23,6 +24,7 @@ def configure_routes_trainium(app: FastAPI) -> None:
     configure_routes_reports(app)
     configure_routes_calibration(app)
     configure_routes_runs(app)
+    configure_routes_assignments(app)
 
     @app.get("/trainium/health")
     async def health():

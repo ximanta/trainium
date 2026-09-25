@@ -6,7 +6,7 @@ import {
   GreenRoom,
   type GreenRoomPersona,
   type GreenRoomSlide,
-  type TrainerAddress,
+  type TrainerIdentity,
 } from "@/components/agents/trainium/GreenRoom";
 import { TrainiumClassroom } from "@/components/agents/trainium/TrainiumClassroom";
 
@@ -21,8 +21,7 @@ export function SessionEntry({
   title,
   courseTitle,
   audience,
-  trainerName,
-  trainerEmail,
+  requiresCode,
   durationMin,
   personas,
   slides,
@@ -31,18 +30,13 @@ export function SessionEntry({
   title: string;
   courseTitle: string;
   audience: string;
-  trainerName: string;
-  trainerEmail: string;
+  requiresCode: boolean;
   durationMin: number;
   personas: GreenRoomPersona[];
   slides: GreenRoomSlide[];
 }) {
   // Whoever opened the link, as they identified themselves in the green room.
-  const [identity, setIdentity] = useState<{
-    name: string;
-    email: string;
-    address: TrainerAddress;
-  } | null>(null);
+  const [identity, setIdentity] = useState<TrainerIdentity | null>(null);
 
   if (!identity) {
     return (
@@ -50,8 +44,7 @@ export function SessionEntry({
         title={title}
         courseTitle={courseTitle}
         audience={audience}
-        trainerName={trainerName}
-        trainerEmail={trainerEmail}
+        requiresCode={requiresCode}
         durationMin={durationMin}
         personas={personas}
         slides={slides}
@@ -64,8 +57,8 @@ export function SessionEntry({
     <TrainiumClassroom
       simulationId={simulationId}
       autoJoin
-      trainerName={identity.name}
-      trainerEmail={identity.email}
+      code={identity.code}
+      displayName={identity.displayName}
       trainerAddress={identity.address}
     />
   );

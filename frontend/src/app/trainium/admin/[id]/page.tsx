@@ -1,4 +1,5 @@
 import { AppHeader } from "@/components/agents/trainium/AppHeader";
+import { AssignmentPanel } from "@/components/agents/trainium/AssignmentPanel";
 import { SessionBuilder } from "@/components/agents/trainium/SessionBuilder";
 
 export default function TrainiumEditSessionPage({
@@ -19,6 +20,11 @@ export default function TrainiumEditSessionPage({
         </p>
         <div className="mt-8">
           <SessionBuilder sessionId={params.id} />
+        </div>
+        {/* Below the builder, not inside it: assigning people is a separate
+            job from configuring the session, and it happens after. */}
+        <div className="mt-10 border-t pt-8">
+          <AssignmentPanel sessionId={params.id} />
         </div>
       </main>
     </div>

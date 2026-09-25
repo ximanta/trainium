@@ -14,6 +14,9 @@ type Run = {
   trainer_name: string;
   trainer_email: string;
   assigned_trainer_name: string;
+  display_name: string;
+  assignment_code: string;
+  attempt_number: number;
   status: string;
   started_at?: string;
   actual_duration_s?: number;
@@ -92,12 +95,13 @@ export function RunList({ simulationId }: { simulationId?: string }) {
       ) : (
         <div className="mt-4 space-y-2">
           {shown.map((r) => {
-            // Worth surfacing: the link was sent to one person and taught by
-            // another, which happens when a trainer forwards it.
-            const forwarded =
+            // Worth surfacing only when it differs: a trainer who taught under
+            // a name other than their own is not suspicious, but an admin
+            // reading the transcript needs to know who "Rocky" was.
+            const alias =
+              r.display_name &&
               r.assigned_trainer_name &&
-              r.trainer_name &&
-              r.assigned_trainer_name !== r.trainer_name;
+              r.display_name !== r.assigned_trainer_name;
             return (
               <div
                 key={r.id}
@@ -119,6 +123,9 @@ export function RunList({ simulationId }: { simulationId?: string }) {
                     {r.actual_duration_s ? (
                       <span>{Math.round(r.actual_duration_s / 60)} min</span>
                     ) : null}
+                    {r.attempt_number > 0 && (
+                      <span>attempt {r.attempt_number}</span>
+                    )}
                     {r.has_recording && (
                       <span className="flex items-center gap-1">
                         <Video className="h-3 w-3" />
@@ -126,9 +133,9 @@ export function RunList({ simulationId }: { simulationId?: string }) {
                       </span>
                     )}
                   </p>
-                  {forwarded && (
-                    <p className="mt-1 text-xs text-amber-700">
-                      Link was assigned to {r.assigned_trainer_name}
+                  {alias && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Taught as {r.display_name}
                     </p>
                   )}
                 </div>

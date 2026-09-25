@@ -218,15 +218,42 @@ def describe_trainer(name: str, address: str) -> str:
     return f"{who}{forms}. {frequency}"
 
 
+class TrainerAssignment(BaseModel):
+    """One named trainer invited to deliver one session.
+
+    The join link alone cannot say who turned up: it gets forwarded, and a
+    name typed into the green room is self reported, so an admin could never
+    trust a report filed under it. The code here is what ties a delivery to a
+    real person, and it is issued by the admin rather than chosen by the
+    trainer.
+
+    It is an identifier, not a credential. Anyone holding Anjali's code can
+    deliver as Anjali. That is the right trade for a rehearsal tool, and
+    anything stronger belongs in Content Crafter's login rather than here.
+    """
+
+    id: str
+    simulation_id: str
+    org_id: str
+    trainer_name: str
+    trainer_email: str
+    # Short and readable because it gets pasted into mail and typed back in by
+    # hand. Unique across assignments, so it resolves to its session on its
+    # own and the link becomes a convenience rather than a second thing to
+    # keep track of.
+    code: str
+    # Capped rather than unlimited so a cohort cannot rehearse indefinitely
+    # against the model budget. An admin can raise it afterwards, which is the
+    # escape hatch for a session lost to a dropped connection.
+    max_attempts: int = Field(default=3, ge=1, le=3)
+    attempts_used: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class Simulation(BaseModel):
     id: str
     org_id: str
     trainer_id: str
-    # Who the admin expects to deliver this. A link can be forwarded, so the
-    # person who actually joins confirms or corrects it in the green room and
-    # the truth is recorded on the run.
-    assigned_trainer_name: str = ""
-    assigned_trainer_email: str = ""
     # Legacy: whoever ran it last. Superseded by SessionRun, kept so existing
     # documents still load.
     trainer_name: str = ""
@@ -363,14 +390,25 @@ class SessionRun(BaseModel):
     id: str
     simulation_id: str
     org_id: str
-    # Who the admin expected, and who actually turned up. Both are kept: the
-    # admin's assignment is the record of intent, and a forwarded link means
-    # the person teaching may not be that person.
+    # The assignment this delivery was made against, and the identity copied
+    # from it. Copied rather than joined so a report stays readable after an
+    # assignment is deleted, and so renaming a trainer does not rewrite the
+    # history of what was already delivered.
+    assignment_id: str = ""
+    assignment_code: str = ""
+    # Who the admin assigned. Authoritative: it comes from the assignment the
+    # code resolved to, never from anything the trainer typed.
     assigned_trainer_name: str = ""
     assigned_trainer_email: str = ""
+    # What the trainer asked to be called in the room. Cosmetic, and kept
+    # apart from the assignment identity precisely because it is theirs to
+    # choose: personas say this, reports are filed under the assignment.
+    display_name: str = ""
     trainer_name: str = ""
     trainer_email: str = ""
     trainer_address: TrainerAddress = "name"
+    # Which attempt this was, 1 based, against the assignment's cap.
+    attempt_number: int = 0
     status: Literal["live", "complete", "failed"] = "live"
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     ended_at: Optional[datetime] = None

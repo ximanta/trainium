@@ -12,8 +12,7 @@ type JoinInfo = {
   title: string;
   course_title: string;
   audience: string;
-  assigned_trainer_name: string;
-  assigned_trainer_email: string;
+  requires_code: boolean;
   duration_min: number;
   personas: GreenRoomPersona[];
   slides: GreenRoomSlide[];
@@ -45,8 +44,7 @@ export default async function TrainiumJoinPage({
           title={info.title || "Live session"}
           courseTitle={info.course_title}
           audience={info.audience}
-          trainerName={info.assigned_trainer_name}
-          trainerEmail={info.assigned_trainer_email}
+          requiresCode={info.requires_code}
           durationMin={info.duration_min}
           personas={info.personas ?? []}
           slides={info.slides ?? []}

@@ -7,6 +7,7 @@ admin needs the second, because the same link is deliberately shared and
 
 import csv
 import io
+import re
 
 from fastapi import Depends, FastAPI, HTTPException, Response
 
@@ -18,6 +19,7 @@ from main.agents.trainium.db_manager import (
     simulations_collection,
     transcripts_collection,
 )
+from main.agents.trainium.routes_assignments import normalise_code
 
 
 def _clock(seconds: float) -> str:
@@ -42,12 +44,22 @@ def configure_routes_runs(app: FastAPI) -> None:
         if simulation_id:
             query["simulation_id"] = simulation_id
         if trainer:
-            query["$or"] = [
-                {"trainer_name": {"$regex": trainer, "$options": "i"}},
-                {"trainer_email": {"$regex": trainer, "$options": "i"}},
-                {"assigned_trainer_name": {"$regex": trainer, "$options": "i"}},
-                {"assigned_trainer_email": {"$regex": trainer, "$options": "i"}},
+            # The code and the display name are searchable too. An admin
+            # holding a transcript full of "Rocky", or an invitation mail with
+            # only a code in it, should be able to find the delivery from what
+            # they actually have in front of them.
+            escaped = re.escape(trainer.strip())
+            bare_code = normalise_code(trainer)
+            fields = [
+                "trainer_name",
+                "trainer_email",
+                "assigned_trainer_name",
+                "assigned_trainer_email",
+                "display_name",
             ]
+            query["$or"] = [
+                {f: {"$regex": escaped, "$options": "i"}} for f in fields
+            ] + ([{"assignment_code": bare_code}] if bare_code else [])
 
         runs = await runs_collection.find(query, {"_id": 0}).sort("started_at", -1).to_list(
             length=None
@@ -120,6 +132,14 @@ def configure_routes_runs(app: FastAPI) -> None:
         writer.writerow(["Session", (simulation or {}).get("title", "")])
         writer.writerow(["Trainer", run.get("trainer_name", "")])
         writer.writerow(["Email", run.get("trainer_email", "")])
+        # Only when it differs, since the transcript body will be full of it
+        # and a reader otherwise has no way to connect "Rocky" to the trainer
+        # named two lines above.
+        display = run.get("display_name", "")
+        if display and display != run.get("trainer_name", ""):
+            writer.writerow(["Addressed as", display])
+        if run.get("attempt_number"):
+            writer.writerow(["Attempt", run["attempt_number"]])
         writer.writerow(["Started", str(run.get("started_at", ""))])
         writer.writerow([])
         writer.writerow(["Time", "Seconds", "Speaker", "Slide", "Text"])

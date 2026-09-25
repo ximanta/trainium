@@ -17,6 +17,25 @@ import { formatPersonaType } from "@/components/agents/trainium/personaType";
 
 export type TrainerAddress = "sir" | "maam" | "name";
 
+export type TrainerIdentity = {
+  /** Empty for an open session with nobody assigned. */
+  code: string;
+  /** What the personas call them, which is theirs to choose. */
+  displayName: string;
+  address: TrainerAddress;
+};
+
+/** What a code resolved to. The name and email here are the admin's record,
+ *  not anything the trainer typed, and they are what the report is filed
+ *  under. */
+type VerifiedCode = {
+  trainer_name: string;
+  trainer_email: string;
+  attempts_left: number;
+  max_attempts: number;
+  exhausted: boolean;
+};
+
 export type GreenRoomPersona = {
   id: string;
   name: string;
@@ -72,8 +91,7 @@ export function GreenRoom({
   title,
   courseTitle,
   audience,
-  trainerName,
-  trainerEmail,
+  requiresCode,
   durationMin,
   personas,
   slides,
@@ -82,16 +100,11 @@ export function GreenRoom({
   title: string;
   courseTitle: string;
   audience: string;
-  trainerName: string;
-  trainerEmail: string;
+  requiresCode: boolean;
   durationMin: number;
   personas: GreenRoomPersona[];
   slides: GreenRoomSlide[];
-  onStart: (identity: {
-    name: string;
-    email: string;
-    address: TrainerAddress;
-  }) => void;
+  onStart: (identity: TrainerIdentity) => void;
 }) {
   const [cameraOn, setCameraOn] = useState(false);
   const [micOn, setMicOn] = useState(false);
@@ -107,11 +120,14 @@ export function GreenRoom({
   // either way, so the waiting message can go.
   const [devicesResolved, setDevicesResolved] = useState(false);
   const [slideIndex, setSlideIndex] = useState(0);
-  // Set here, not by the admin: one join link is shared across many trainers,
-  // so only the person in this room knows who they are. Remembered per browser
-  // so a repeat trainer does not retype it every session.
-  const [name, setName] = useState(trainerName);
-  const [email, setEmail] = useState(trainerEmail);
+  // The code the admin issued, and what it resolved to. Identity is the
+  // admin's to assert, not the trainer's: a name typed in here could be
+  // anything, so it is kept for the room to use and nothing else.
+  const [code, setCode] = useState("");
+  const [verified, setVerified] = useState<VerifiedCode | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [name, setName] = useState("");
   const [address, setAddress] = useState<TrainerAddress>("name");
 
   useEffect(() => {
@@ -120,17 +136,44 @@ export function GreenRoom({
       if (!saved) return;
       const parsed = JSON.parse(saved) as {
         name?: string;
-        email?: string;
         address?: TrainerAddress;
       };
-      if (parsed.name && !trainerName) setName(parsed.name);
-      if (parsed.email && !trainerEmail) setEmail(parsed.email);
+      if (parsed.name) setName(parsed.name);
       if (parsed.address) setAddress(parsed.address);
     } catch {
       // Private windows and blocked storage both throw; the fields just start
       // empty, which is the same as a first visit.
     }
-  }, [trainerName, trainerEmail]);
+  }, []);
+
+  async function verifyCode() {
+    setVerifying(true);
+    setCodeError(null);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/trainium/join/verify-code`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setCodeError(body.detail || "That code was not recognised.");
+        return;
+      }
+      const data: VerifiedCode = await res.json();
+      setVerified(data);
+      // Their real name is the sensible thing to be called, so it is offered
+      // rather than imposed. Changing it changes only what the room says.
+      if (!name.trim()) setName(data.trainer_name);
+    } catch {
+      setCodeError("Could not reach the server. Check your connection and try again.");
+    } finally {
+      setVerifying(false);
+    }
+  }
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -250,17 +293,17 @@ export function GreenRoom({
   }
 
   function start() {
-    if (!micOn) return;
+    if (blocked) return;
     try {
       localStorage.setItem(
         "trainium.trainer",
-        JSON.stringify({ name: name.trim(), email: email.trim(), address })
+        JSON.stringify({ name: name.trim(), address })
       );
     } catch {
       // Not being able to remember it is not a reason to block the session.
     }
     stopDevices();
-    onStart({ name: name.trim(), email: email.trim(), address });
+    onStart({ code, displayName: name.trim(), address });
   }
 
   const slide = slides[slideIndex];
@@ -268,10 +311,28 @@ export function GreenRoom({
   // it the personas never hear anything and never respond. The camera is what
   // delivery is scored from, and a report missing half its criteria is not the
   // session the trainer was sent here to have.
-  const missing = [!micOn && "microphone", !cameraOn && "camera"].filter(
+  const missingDevices = [!micOn && "microphone", !cameraOn && "camera"].filter(
     Boolean
   ) as string[];
-  const blocked = missing.length > 0;
+  // A session with trainers assigned admits nobody without a code, since the
+  // code is the only thing tying a delivery to a real person. A session with
+  // nobody assigned is an open practice link and needs none.
+  const identityProblem = !requiresCode
+    ? null
+    : !verified
+      ? "Enter the code from your invitation to start"
+      : verified.exhausted
+        ? "You have used all your attempts at this session"
+        : !name.trim()
+          ? "Enter the name you want the learners to use"
+          : null;
+  const blocked = missingDevices.length > 0 || identityProblem !== null;
+  // Identity first: a trainer without a valid code cannot start at all, so
+  // telling them to switch a camera on would be advice they cannot act on.
+  const blocker =
+    identityProblem ?? (missingDevices.length > 0
+      ? `Turn your ${missingDevices.join(" and ")} on to start`
+      : null);
 
   return (
     <div className="mx-auto max-w-[88rem]">
@@ -293,16 +354,14 @@ export function GreenRoom({
             size="lg"
             onClick={start}
             disabled={blocked}
-            title={
-              blocked ? `Turn your ${missing.join(" and ")} on to start` : undefined
-            }
+            title={blocker ?? undefined}
           >
             Start the session
           </Button>
-          {blocked && (
+          {blocker && (
             <p className="mt-1.5 flex items-center justify-end gap-1 text-xs text-destructive">
               <AlertCircle className="h-3.5 w-3.5" />
-              Turn your {missing.join(" and ")} on to start
+              {blocker}
             </p>
           )}
         </div>
@@ -316,16 +375,90 @@ export function GreenRoom({
         {/* Kit check first: a dead mic is the one failure that wastes the
             whole session, and it is invisible until someone does not respond. */}
         <section>
-          {/* Asked here rather than by the admin: the same join link is shared
-              across trainers, so the admin cannot know who turns up, and
-              guessing an honorific would misgender half of them. */}
-          <h2 className="text-sm font-medium">How should the learners address you?</h2>
+          {/* The code comes first because nothing else matters until it
+              checks out: it decides whether this person may start at all and
+              whose report this becomes. */}
+          {requiresCode && !verified && (
+            <>
+              <h2 className="text-sm font-medium">Your trainer code</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                From the invitation you were sent. It identifies you, so your
+                report and transcript come back to you and not to whoever else
+                has this link.
+              </p>
+              <form
+                className="mt-2 flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (code.trim() && !verifying) verifyCode();
+                }}
+              >
+                <input
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="TRN-4K2P"
+                  aria-label="Your trainer code"
+                  autoComplete="off"
+                  className="min-w-0 flex-1 rounded-md border px-3 py-2 font-mono text-sm uppercase tracking-wider"
+                />
+                <Button type="submit" disabled={!code.trim() || verifying}>
+                  {verifying ? "Checking..." : "Check"}
+                </Button>
+              </form>
+              {codeError && (
+                <p className="mt-1.5 flex gap-1.5 text-xs text-destructive">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  {codeError}
+                </p>
+              )}
+            </>
+          )}
+
+          {requiresCode && verified && (
+            <>
+              <h2 className="text-sm font-medium">You are signed in</h2>
+              <div className="mt-2 rounded-lg border bg-slate-50 p-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <Check className="h-4 w-4 text-green-700" />
+                  {verified.trainer_name}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {verified.trainer_email}
+                </p>
+                {/* Said plainly and up front. Finding out afterwards that a
+                    rehearsal was the last one available is the kind of
+                    surprise that makes a tool feel hostile. */}
+                <p
+                  className={`mt-2 text-xs ${
+                    verified.exhausted
+                      ? "font-medium text-destructive"
+                      : verified.attempts_left === 1
+                        ? "font-medium text-amber-700"
+                        : "text-muted-foreground"
+                  }`}
+                >
+                  {verified.exhausted
+                    ? "You have used all your attempts. Ask your administrator to allow another."
+                    : `This is attempt ${
+                        verified.max_attempts - verified.attempts_left + 1
+                      } of ${verified.max_attempts}. Starting the session uses one.`}
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* Separate from identity on purpose: what a room calls someone is
+              theirs to choose, and it changes nothing about whose delivery
+              this is. */}
+          <h2 className={`${requiresCode ? "mt-5" : ""} text-sm font-medium`}>
+            How should the learners address you?
+          </h2>
           <div className="mt-2 flex gap-2">
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
-              aria-label="Your name"
+              placeholder="What they should call you"
+              aria-label="What the learners should call you"
               className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm"
             />
             <select
@@ -339,28 +472,11 @@ export function GreenRoom({
               <option value="sir">Sir</option>
             </select>
           </div>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Your email"
-            aria-label="Your email"
-            className="mt-2 w-full rounded-md border px-3 py-2 text-sm"
-          />
-          {/* Shown only when the name differs from who the admin expected,
-              which is the forwarded-link case. Silent otherwise, since most
-              of the time the prefilled name is simply correct. */}
-          {trainerName && name.trim() && name.trim() !== trainerName && (
-            <p className="mt-1.5 text-xs text-amber-700">
-              This link was set up for {trainerName}. Your report will be filed
-              under your own name.
-            </p>
-          )}
           <p className="mt-1.5 text-xs text-muted-foreground">
             {address === "name"
               ? name.trim()
                 ? `They will call you ${name.trim()}.`
-                : "Leave the name blank and they will speak to you without any honorific."
+                : "Leave this blank and they will speak to you without any honorific."
               : `They will call you ${address === "sir" ? "Sir" : "Ma'am"}.`}
           </p>
 
