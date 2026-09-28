@@ -3,6 +3,7 @@ import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, UploadFile
 
@@ -19,6 +20,33 @@ from main.agents.trainium.models import Course, CourseAsset, SlideContent
 from main.agents.trainium.storage import upload_file
 
 logger = logging.getLogger(__name__)
+
+
+def _describe_ingest_failure(exc: Exception, kind: str) -> str:
+    """An admin readable reason for a deck that would not ingest.
+
+    The libraries describe failures in their own terms: python-pptx opens a
+    .pptx by unzipping it, so a corrupt one reports "File is not a zip file",
+    which is true of the format and useless to the person holding the file.
+    Anything recognisable is restated as what to do about it; anything else
+    falls back to the raw text, and to the class name when even that is empty
+    (NotImplementedError carries no message at all).
+    """
+    raw = str(exc).strip()
+    lowered = raw.lower()
+    label = "PowerPoint file" if kind == "pptx" else "PDF"
+
+    if "not a zip file" in lowered or "badzipfile" in lowered:
+        return (
+            f"This file is not a readable {label}. It may be corrupt, or renamed "
+            f"from another format. Open it, save it again as .{kind}, and retry."
+        )
+    if "password" in lowered or "encrypted" in lowered:
+        return f"This {label} is password protected. Remove the protection and retry."
+    if "no slides" in lowered or "empty" in lowered:
+        return f"This {label} has no pages to teach from."
+
+    return raw or type(exc).__name__
 
 
 def configure_routes_courses(app: FastAPI) -> None:
@@ -61,6 +89,27 @@ def configure_routes_courses(app: FastAPI) -> None:
         if course is None:
             raise HTTPException(status_code=404, detail="Course not found")
 
+        if kind not in ("pptx", "pdf"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Teaching material must be a PowerPoint or a PDF, not {kind}.",
+            )
+
+        # Checked here too, not only in the browser. The accept attribute on a
+        # file input is a filter, not a rule, and this endpoint is reachable
+        # without it.
+        extension = Path(file.filename or "").suffix.lower()
+        if extension != f".{kind}":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The older .ppt format is not supported. Open it in PowerPoint "
+                    "and save as .pptx."
+                    if extension == ".ppt"
+                    else f"Expected a .{kind} file but got {extension or 'a file with no extension'}."
+                ),
+            )
+
         content = await file.read()
         sha256 = hashlib.sha256(content).hexdigest()
         file_id = await upload_file(file.filename, content, file.content_type or "")
@@ -102,12 +151,7 @@ def configure_routes_courses(app: FastAPI) -> None:
                     },
                 )
             except Exception as exc:
-                # Some exceptions carry no message at all: NotImplementedError
-                # is the notable one, and it produced an "Ingestion failed:"
-                # with nothing after the colon, which told nobody anything.
-                # Fall back to the class name so there is always something to
-                # act on.
-                reason = str(exc).strip() or type(exc).__name__
+                reason = _describe_ingest_failure(exc, kind)
                 logger.exception("Deck ingestion failed for course %s", course_id)
                 await courses_collection.update_one(
                     {"id": course_id},

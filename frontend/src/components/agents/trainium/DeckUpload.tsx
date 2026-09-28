@@ -42,6 +42,28 @@ export function DeckUpload({ onUploaded }: { onUploaded: (course: Course) => voi
   const [error, setError] = useState<string | null>(null);
 
   async function handleFile(file: File) {
+    // The accept attribute only filters what the picker shows by default;
+    // anyone can switch it to "All files" and choose a .docx. Checking here
+    // means a wrong file is refused instantly, by name, instead of being
+    // uploaded and rejected by a library error deep in the server.
+    const name = file.name.toLowerCase();
+    const kind = name.endsWith(".pdf") ? "pdf" : name.endsWith(".pptx") ? "pptx" : null;
+    if (!kind) {
+      // The old .ppt binary format is not Open XML, so python-pptx cannot
+      // read it. Called out separately because "save as .pptx" is something
+      // the admin can act on, where a generic refusal is not.
+      const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
+      setError(
+        name.endsWith(".ppt")
+          ? "The older .ppt format is not supported. Open it in PowerPoint and save as .pptx."
+          : ext
+            ? `A .${ext} file cannot be used as teaching material. Upload a PowerPoint (.pptx) or a PDF.`
+            : "Upload a PowerPoint (.pptx) or a PDF."
+      );
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
@@ -58,9 +80,7 @@ export function DeckUpload({ onUploaded }: { onUploaded: (course: Course) => voi
       const ingested = await api.post(
         // The two deck formats ingest the same way; the kind only picks
         // which extractor reads the pages.
-        `/trainium/admin/courses/${created.data.id}/assets?kind=${
-          file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "pptx"
-        }`,
+        `/trainium/admin/courses/${created.data.id}/assets?kind=${kind}`,
         form,
         { timeout: 5 * 60 * 1000 }
       );
