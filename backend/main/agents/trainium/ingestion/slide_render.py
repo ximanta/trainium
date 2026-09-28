@@ -1,5 +1,6 @@
 import asyncio
 import io
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -78,44 +79,82 @@ def extract_pdf_text(pdf_bytes: bytes) -> list[dict]:
         pdf.close()
 
 
-async def render_slides_to_png(pptx_bytes: bytes) -> list[bytes]:
-    """Convert a PPTX to PDF via LibreOffice headless, then rasterize each
-    page to a PNG at 1280px wide. Returns one PNG per slide, in order.
+def _render_slides_blocking(pptx_bytes: bytes) -> list[bytes]:
+    """The LibreOffice conversion and rasterisation, as ordinary blocking code.
+
+    Deliberately not async. Uvicorn runs a selector event loop on Windows,
+    and that loop cannot spawn subprocesses at all: asyncio's
+    create_subprocess_exec raises NotImplementedError, whose message is the
+    empty string, so the upload failed with a blank reason. Plain subprocess
+    in a worker thread has no such limitation and behaves the same on every
+    platform.
     """
+    if not Path(settings.soffice_path).exists():
+        raise RuntimeError(
+            f"LibreOffice was not found at {settings.soffice_path}. Install it, or "
+            f"set SOFFICE_PATH to the soffice executable."
+        )
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         pptx_path = tmp_path / "deck.pptx"
         pptx_path.write_bytes(pptx_bytes)
 
-        process = await asyncio.create_subprocess_exec(
-            settings.soffice_path,
-            "--headless",
-            "--convert-to",
-            "pdf",
-            "--outdir",
-            str(tmp_path),
-            str(pptx_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await process.communicate()
-        if process.returncode != 0:
-            raise RuntimeError(f"LibreOffice conversion failed: {stderr.decode()}")
+        try:
+            result = subprocess.run(
+                [
+                    settings.soffice_path,
+                    "--headless",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    str(tmp_path),
+                    str(pptx_path),
+                ],
+                capture_output=True,
+                # A deck that hangs the converter should fail the upload
+                # rather than hold a worker thread for the life of the
+                # process.
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                "LibreOffice took too long converting this deck. It may be very "
+                "large, or an existing LibreOffice window may be blocking headless "
+                "conversion."
+            ) from exc
+
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or b"").decode(errors="replace").strip()
+            raise RuntimeError(
+                f"LibreOffice could not convert this deck: {detail or 'no output'}"
+            )
 
         pdf_path = tmp_path / "deck.pdf"
         if not pdf_path.exists():
-            raise RuntimeError("LibreOffice did not produce a PDF output")
+            raise RuntimeError(
+                "LibreOffice reported success but produced no PDF. Close any open "
+                "LibreOffice window and try again."
+            )
 
         pdf = pdfium.PdfDocument(str(pdf_path))
-        images: list[bytes] = []
-        for page in pdf:
-            bitmap = page.render(scale=1280 / page.get_size()[0])
-            pil_image = bitmap.to_pil()
-            import io
+        try:
+            images: list[bytes] = []
+            for page in pdf:
+                bitmap = page.render(scale=1280 / page.get_size()[0])
+                buffer = io.BytesIO()
+                bitmap.to_pil().save(buffer, format="PNG")
+                images.append(buffer.getvalue())
+            return images
+        finally:
+            pdf.close()
 
-            buffer = io.BytesIO()
-            pil_image.save(buffer, format="PNG")
-            images.append(buffer.getvalue())
-        pdf.close()
 
-        return images
+async def render_slides_to_png(pptx_bytes: bytes) -> list[bytes]:
+    """Convert a PPTX to PDF via LibreOffice headless, then rasterize each
+    page to a PNG at 1280px wide. Returns one PNG per slide, in order.
+
+    Off the event loop, because converting a large deck takes tens of seconds
+    and would otherwise stall every live session on this server.
+    """
+    return await asyncio.to_thread(_render_slides_blocking, pptx_bytes)

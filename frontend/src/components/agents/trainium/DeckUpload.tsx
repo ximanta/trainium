@@ -13,6 +13,28 @@ type Course = {
   slides?: unknown[];
 };
 
+/** A readable sentence from whatever the server or the browser threw.
+ *
+ *  FastAPI returns `detail` as a string for a deliberate error but as an
+ *  array of validation objects for a schema failure. Rendering the array
+ *  gave an error message that was literally blank, which read as the upload
+ *  failing for no reason at all.
+ */
+function describeError(e: unknown): string {
+  const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data
+    ?.detail;
+
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) => (d as { msg?: string })?.msg)
+      .filter((m): m is string => Boolean(m));
+    if (parts.length) return parts.join(". ");
+  }
+  if (e instanceof Error && e.message) return e.message;
+  return "Upload failed for an unknown reason. Check the server log.";
+}
+
 export function DeckUpload({ onUploaded }: { onUploaded: (course: Course) => void }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
@@ -49,10 +71,7 @@ export function DeckUpload({ onUploaded }: { onUploaded: (course: Course) => voi
       setProgress(`Done, ${slideCount} slides ready.`);
       onUploaded(ingested.data as Course);
     } catch (e) {
-      const detail =
-        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        (e instanceof Error ? e.message : "Upload failed");
-      setError(detail);
+      setError(describeError(e));
       setProgress("");
     } finally {
       setBusy(false);

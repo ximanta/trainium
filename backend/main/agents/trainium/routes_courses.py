@@ -1,4 +1,6 @@
+import asyncio
 import hashlib
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -15,6 +17,8 @@ from main.agents.trainium.ingestion.slide_render import (
 from main.agents.trainium.ingestion.teaching_graph import generate_teaching_graph
 from main.agents.trainium.models import Course, CourseAsset, SlideContent
 from main.agents.trainium.storage import upload_file
+
+logger = logging.getLogger(__name__)
 
 
 def configure_routes_courses(app: FastAPI) -> None:
@@ -98,18 +102,25 @@ def configure_routes_courses(app: FastAPI) -> None:
                     },
                 )
             except Exception as exc:
+                # Some exceptions carry no message at all: NotImplementedError
+                # is the notable one, and it produced an "Ingestion failed:"
+                # with nothing after the colon, which told nobody anything.
+                # Fall back to the class name so there is always something to
+                # act on.
+                reason = str(exc).strip() or type(exc).__name__
+                logger.exception("Deck ingestion failed for course %s", course_id)
                 await courses_collection.update_one(
                     {"id": course_id},
                     {
                         "$set": {
                             "status": "failed",
-                            "ingest_error": str(exc),
+                            "ingest_error": reason,
                             "updated_at": datetime.now(timezone.utc),
                         }
                     },
                 )
                 raise HTTPException(
-                    status_code=422, detail=f"Ingestion failed: {exc}"
+                    status_code=422, detail=f"Ingestion failed: {reason}"
                 ) from exc
 
         updated = await courses_collection.find_one(
@@ -232,9 +243,11 @@ async def _ingest_pdf(course_id: str, pdf_bytes: bytes) -> list[SlideContent]:
     same pipeline with the conversion step skipped. It also means a PDF needs
     no LibreOffice, which is one less thing to have installed.
     """
-    return await _store_slides(
-        course_id, extract_pdf_text(pdf_bytes), render_pdf_to_png(pdf_bytes)
-    )
+    # Rasterising is CPU bound and takes seconds per page on a large deck.
+    # On the event loop it would freeze every live session on this server for
+    # the duration, so it goes to a worker thread like the PPTX path.
+    images = await asyncio.to_thread(render_pdf_to_png, pdf_bytes)
+    return await _store_slides(course_id, extract_pdf_text(pdf_bytes), images)
 
 
 async def _store_slides(
