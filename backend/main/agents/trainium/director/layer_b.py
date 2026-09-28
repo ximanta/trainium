@@ -55,6 +55,8 @@ Slide: {slide_number}
 Elapsed: {elapsed_s:.0f}s
 Objectives covered so far: {objectives_covered}
 
+{screen_status}
+
 The slide number is for your reference only. Learners in the room see one
 slide at a time and have no idea how long the deck is or how much is left, so
 no persona ever mentions a slide number, says how far through the deck they
@@ -75,8 +77,6 @@ Eligible personas (not on cooldown):
 {persona_digest}
 
 Recent classroom events: {recent_events}
-
-Screen: {screen_status}
 
 {phase_instruction}
 {reply_instruction}
@@ -173,6 +173,34 @@ the pause naturally: picking up the last thing that was said, asking whether \
 to move on, or checking whether something was missed. Do not start an \
 unrelated new topic."""
 
+# The screen overrides the deck. A trainer who shares a terminal, an IDE or a
+# browser has left the slides behind, and the room is looking at the shared
+# window, not at slide N. Without saying this outright the model keeps reading
+# "Slide: 12" and the deck guidance below it, and asks about the PowerPoint
+# while the trainer is demonstrating something else entirely.
+_SCREEN_SHARED = """\
+ON SCREEN RIGHT NOW: the trainer is sharing their screen and an image of it is \
+attached to this request. That image, not the slide deck, is what the room is \
+looking at. Look at it before deciding anything.
+
+If what is shared is not the deck (a terminal, an editor, a browser, a \
+spreadsheet, a running application), then the trainer has moved off the \
+slides and is demonstrating. Every question must be about what is actually \
+visible in that image: the command they ran, the error on screen, the code in \
+front of them, the output that just appeared. Do not ask about the slides or \
+the deck while something else is on screen. A learner watching a live demo \
+asks what a flag does, why a command failed, or what a line of code is for, \
+and does not ask about a slide nobody can see any more.
+
+Read what is genuinely legible in the image and refer to it concretely. Do \
+not invent a filename, a command or an error that is not there, and if the \
+image is too small or blurred to read, ask the trainer to zoom in or to say \
+what they just ran, which is what a real learner does."""
+
+_SCREEN_NOT_SHARED = """\
+ON SCREEN RIGHT NOW: the trainer is on the slides. Any image attached to this \
+request is the current slide, which is what the room can see."""
+
 
 def _format_persona_digest(personas: dict[str, PersonaState], elapsed_s: float) -> str:
     lines = []
@@ -263,10 +291,9 @@ async def decide_and_speak(
         persona_digest=_format_persona_digest(eligible_personas, state.elapsed_s),
         recent_events=state.recent_events,
         screen_status=(
-            "the trainer is sharing their screen, an image of it is attached; "
-            "a learner may reasonably ask about what is visible on it"
-            if state.screen_frame_jpeg
-            else "the trainer is not sharing their screen"
+            _SCREEN_SHARED
+            if state.screen_sharing and state.screen_frame_jpeg
+            else _SCREEN_NOT_SHARED
         ),
     )
 

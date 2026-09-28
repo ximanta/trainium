@@ -246,6 +246,8 @@ export function TrainiumClassroom({
   // names synchronously without waiting on batched state updates.
   const nameByIdRef = useRef<Record<string, string>>({});
   const lastFrameRef = useRef<string | null>(null);
+  // Mirrors screenSharing for code that runs outside the render that set it.
+  const sharingRef = useRef(false);
   // Camera track recorder. Chunks accumulate in memory and upload once at the
   // end: a 30-minute WebM is tens of megabytes, which is far cheaper to send
   // as one request than to stream and reassemble server-side.
@@ -502,7 +504,10 @@ export function TrainiumClassroom({
     // active, otherwise the current slide. Reading only the screen-share
     // element meant personas saw a blank frame during a slide-driven
     // session.
-    const source: HTMLVideoElement | HTMLImageElement | null = screenSharing
+    // A ref, not the state: this runs from timers and VAD callbacks that
+    // captured an older render, and reading the state there can pick the
+    // slide image while a screen is being shared, or the reverse.
+    const source: HTMLVideoElement | HTMLImageElement | null = sharingRef.current
       ? screenVideoRef.current
       : slideImgRef.current;
     if (!source) return null;
@@ -569,6 +574,10 @@ export function TrainiumClassroom({
       onSpeechEnd: () => {
         speaking = false;
         setStatus("Listening");
+        // Again at the end of the turn: during a demo the trainer types and
+        // runs things while talking, so the screen at "any questions?" is
+        // rarely the screen they started the sentence on.
+        sendScreenFrameIfChanged(ws);
         ws.send(JSON.stringify({ type: "activity_end" }));
       },
     });
@@ -595,6 +604,7 @@ export function TrainiumClassroom({
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current = null;
     lastFrameRef.current = null;
+    sharingRef.current = false;
     setScreenSharing(false);
     send("screen_share", { on: false });
   }
@@ -611,7 +621,24 @@ export function TrainiumClassroom({
     // for the track ending too or the UI would show sharing forever.
     stream.getVideoTracks()[0].addEventListener("ended", stopSharing);
     setScreenSharing(true);
+    sharingRef.current = true;
+    // Forget whatever was last sent. Otherwise the change check compares this
+    // screen against a frame of the deck and can suppress the first one.
+    lastFrameRef.current = null;
     send("screen_share", { on: true });
+
+    // Send a frame now rather than waiting for the trainer to speak. A trainer
+    // who shares a terminal and then asks "any questions?" would otherwise get
+    // a room that has never seen the terminal and still thinks the deck is up,
+    // which is exactly how personas end up asking about the slides.
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      // The first frames of a capture are often blank while the compositor
+      // catches up, so give it a moment and retry until something real lands.
+      for (const delay of [250, 750, 1500]) {
+        setTimeout(() => sendScreenFrameIfChanged(ws), delay);
+      }
+    }
   }
 
   function toggleSelfMute() {

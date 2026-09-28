@@ -100,10 +100,16 @@ class SessionState:
         return self.elapsed_s >= self.duration_s or (
             self.max_turns > 0 and self.turns_taken >= self.max_turns
         )
-    # Latest frame of the trainer's shared screen as JPEG bytes, or None when
-    # not sharing. The client only sends a new frame when the screen actually
-    # changed, so this is refreshed rarely rather than every turn.
+    # Latest frame of what the room is looking at, as JPEG bytes. This is the
+    # shared screen while the trainer is sharing and the current slide image
+    # otherwise, so the flag below is what tells the two apart. The client
+    # only sends a new frame when the picture actually changed, so this is
+    # refreshed rarely rather than every turn.
     screen_frame_jpeg: bytes | None = None
+    # Whether that frame is a shared screen rather than a slide. The Director
+    # needs the distinction: a shared terminal means the trainer has left the
+    # deck, and questions must follow the screen instead of the slides.
+    screen_sharing: bool = False
     persona_states: dict[str, PersonaState] = field(default_factory=dict)
     recent_events: list[dict] = field(default_factory=list)
     intervention_count_window: list[float] = field(default_factory=list)  # elapsed_s timestamps, last 10min

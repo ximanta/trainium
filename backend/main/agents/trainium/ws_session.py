@@ -789,7 +789,9 @@ def configure_routes_ws_session(app: FastAPI) -> None:
                                                 {"from": previous, "to": slide},
                                             )
                                 elif control_type == "screen_share":
-                                    if not control.get("data", {}).get("on"):
+                                    sharing = bool(control.get("data", {}).get("on"))
+                                    state.screen_sharing = sharing
+                                    if not sharing:
                                         # Sharing stopped, drop the stale frame so
                                         # personas do not keep referring to a
                                         # screen that is no longer up.
