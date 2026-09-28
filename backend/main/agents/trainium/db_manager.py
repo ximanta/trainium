@@ -315,7 +315,31 @@ DEFAULT_RUBRIC_SEED = {
 }
 
 
+async def _drop_stale_index(collection, name: str) -> None:
+    """Remove an index that a schema change has invalidated.
+
+    create_index does not alter an index that already exists, so a uniqueness
+    rule written before the run model stays on the collection and keeps being
+    enforced. Dropping it here rather than in a migration script means a
+    developer who pulls the change gets the fix by starting the server, which
+    is the only way it reliably happens.
+    """
+    try:
+        await collection.drop_index(name)
+    except Exception:
+        # Already gone, which is the normal case on every start after the
+        # first. Nothing to report.
+        pass
+
+
 async def ensure_indexes() -> None:
+    # Transcripts and reports were one per simulation until runs existed. Both
+    # are now one per run, and the old unique indexes actively break a second
+    # delivery: the transcript write throws DuplicateKeyError, which killed
+    # the Director turn before any persona could speak.
+    await _drop_stale_index(transcripts_collection, "simulation_id_1")
+    await _drop_stale_index(reports_collection, "simulation_id_1")
+
     await courses_collection.create_index([("org_id", 1), ("status", 1)])
     await courses_collection.create_index([("owner_id", 1)])
     await rubrics_collection.create_index([("org_id", 1), ("status", 1)])
@@ -326,12 +350,24 @@ async def ensure_indexes() -> None:
     await simulations_collection.create_index([("org_id", 1), ("status", 1)])
     await simulations_collection.create_index([("course_id", 1)])
     await recordings_collection.create_index([("simulation_id", 1), ("track", 1)])
-    await transcripts_collection.create_index([("simulation_id", 1)], unique=True)
+    await recordings_collection.create_index([("run_id", 1)])
+    # Keyed on the run, and unique there: one transcript per delivery, many
+    # deliveries per simulation. The plain simulation_id index stays because
+    # the admin views still list everything a session has produced.
+    await transcripts_collection.create_index([("run_id", 1)], unique=True)
+    await transcripts_collection.create_index([("simulation_id", 1)])
     await events_collection.create_index([("simulation_id", 1), ("ts_s", 1)])
+    await events_collection.create_index([("run_id", 1), ("ts_s", 1)])
     await evidence_collection.create_index([("simulation_id", 1), ("competency", 1)])
-    await reports_collection.create_index([("simulation_id", 1)], unique=True)
+    await reports_collection.create_index([("run_id", 1)], unique=True)
+    await reports_collection.create_index([("simulation_id", 1)])
     await analysis_jobs_collection.create_index([("simulation_id", 1)])
     await analysis_jobs_collection.create_index([("status", 1), ("updated_at", 1)])
+    await runs_collection.create_index([("org_id", 1), ("started_at", -1)])
+    await runs_collection.create_index([("simulation_id", 1), ("started_at", -1)])
+    await runs_collection.create_index([("assignment_id", 1)])
+    await assignments_collection.create_index([("code", 1)], unique=True)
+    await assignments_collection.create_index([("simulation_id", 1)])
 
 
 
